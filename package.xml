@@ -5,6 +5,7 @@
 	<description>Custom skibidi robot controller package</description>
 	<maintainer email="ellayan0303@gmail.com">Ella</maintainer>
 	<license>TODO</license>
+	<buildtool_depend>catkin</buildtool_depend>	
 	<depend>geometry_msgs</depend>
 	<depend>rospy</depend>
 	<depend>std_msgs</depend>

@@ -1,0 +1,11 @@
+<?xml version="1.0"?>
+<package format="2">
+	<name>controller_pkg</name>
+	<version>0.0.0</version>
+	<description>Custom skibidi robot controller package</description>
+	<maintainer email="ellayan0303@gmail.com">Ella</maintainer>
+	<license>TODO</license>
+	<depend>geometry_msgs</depend>
+	<depend>rospy</depend>
+	<depend>std_msgs</depend>
+</package>

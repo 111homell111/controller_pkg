@@ -3,6 +3,46 @@
 import rospy
 from geometry_msgs.msg import Twist
 from std_msgs.msg import String
+from gazebo_msgs.srv import SetModelState
+from gazebo_msgs.msg import ModelState
+from sensor_msgs.msg import Image
+from rosgraph_msgs.msg import Clock
+from cv_bridge import CvBridge, CvBridgeError
+import cv2
+
+
+# Callback for the camera image
+def camera_callback(msg):
+    rospy.loginfo("Received an image!")
+
+# Callback for the clock
+def clock_callback(msg):
+    rospy.loginfo(f"Simulated time: {msg.clock.secs} seconds")
+
+
+
+def spawn_position(position):
+    msg = ModelState()
+    msg.model_name = 'B1'
+
+    msg.pose.position.x = position[0]
+    msg.pose.position.y = position[1]
+    msg.pose.position.z = position[2]
+    msg.pose.orientation.x = position[3]
+    msg.pose.orientation.y = position[4]
+    msg.pose.orientation.z = position[5]
+    msg.pose.orientation.w = position[6]
+
+    rospy.wait_for_service('/gazebo/set_model_state')
+    try:
+        set_state = rospy.ServiceProxy('/gazebo/set_model_state', SetModelState)
+        resp = set_state(msg)
+        rospy.loginfo("Model state set successfully")
+    except rospy.ServiceException:
+        rospy.logerr("Service call failed")
+
+
+
 
 def drive_forward():
     # Initialize the ROS node
@@ -14,6 +54,14 @@ def drive_forward():
 
     #Make sure you connect
     rospy.sleep(1)
+
+    # Create subscribers
+    rospy.Subscriber('/B1/pi_camera/image_raw', Image, camera_callback)
+    rospy.Subscriber('/clock', Clock, clock_callback)
+
+    # Wait for the Gazebo service to become available
+    rospy.wait_for_service('/gazebo/set_model_state')
+    set_model_state = rospy.ServiceProxy('/gazebo/set_model_state', SetModelState)
 
     start_timer_msg = String()
     start_timer_msg.data = "SkibidiToilet,MeowMeow,0,NA" 
@@ -40,6 +88,35 @@ def drive_forward():
     vel_msg.angular.z = 0.0
     velocity_publisher.publish(vel_msg)
     rospy.loginfo("Car has stopped")
+
+
+    # Call the Gazebo service to set the model state
+    state_msg = ModelState()
+    state_msg.model_name = "B1"
+    state_msg.pose.position.x = 0.0
+    state_msg.pose.position.y = 0.0
+    state_msg.pose.position.z = 0.0
+    state_msg.pose.orientation.x = 0.0
+    state_msg.pose.orientation.y = 0.0
+    state_msg.pose.orientation.z = 0.0
+    state_msg.pose.orientation.w = 1.0
+    state_msg.twist.linear.x = 0.0
+    state_msg.twist.linear.y = 0.0
+    state_msg.twist.linear.z = 0.0
+    state_msg.twist.angular.x = 0.0
+    state_msg.twist.angular.y = 0.0
+    state_msg.twist.angular.z = 0.0
+    state_msg.reference_frame = "world"
+
+    try:
+        response = set_model_state(state_msg)
+        if response.success:
+            rospy.loginfo("Model state set successfully")
+        else:
+            rospy.logwarn("Failed to set model state")
+    except rospy.ServiceException as e:
+        rospy.logerr(f"Service call failed: {e}")
+
 
     # Stop the timer by publishing to /score_tracker
     stop_timer_msg = String()

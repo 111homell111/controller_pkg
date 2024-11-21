@@ -10,6 +10,10 @@ from rosgraph_msgs.msg import Clock
 from cv_bridge import CvBridge, CvBridgeError
 import cv2
 
+FIRST_SPAWN = [0,0,0,0,0,0]
+SECOND_SPAWN = [0,0,0,0,0,0]
+THIRD_SPAWN = [0,0,0,0,0,0]
+
 
 # Callback for the camera image
 def camera_callback(msg):

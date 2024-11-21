@@ -53,7 +53,7 @@
      <string>TextLabel</string>
     </property>
    </widget>
-   <widget class="QLabel" name="cropped_label">
+   <widget class="QLabel" name="clue_board_label">
     <property name="geometry">
      <rect>
       <x>560</x>

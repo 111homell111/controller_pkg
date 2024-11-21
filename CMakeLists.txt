@@ -18,10 +18,5 @@ include_directories(
   ${catkin_INCLUDE_DIRS}
 )
 
-## Install Python scripts
-catkin_install_python(PROGRAMS
-  scripts/drive_forward.py
-  DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
-)
 
 ## Add any other necessary installation or build instructions here if needed

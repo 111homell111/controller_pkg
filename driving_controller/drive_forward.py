@@ -8,11 +8,31 @@ from gazebo_msgs.msg import ModelState
 from sensor_msgs.msg import Image
 from rosgraph_msgs.msg import Clock
 from cv_bridge import CvBridge, CvBridgeError
+from tf.transformations import quaternion_from_euler
 import cv2
 
-FIRST_SPAWN = [0,0.5,0,0,0,0]
-SECOND_SPAWN = [4,-0.5,0,0,0,0]
-THIRD_SPAWN = [4,3.5,0,0,0,0]
+
+
+# first spawn point
+roll = 0.0  # rotation around X-axis
+pitch = 0.0  # rotation around Y-axis
+yaw = 1.57  # rotation around Z-axis (radians)
+quaternion1 = quaternion_from_euler(roll, pitch, yaw)
+FIRST_SPAWN = [0.5,0,0,quaternion1[0], quaternion1[1], quaternion1[2], quaternion1[3]]
+
+# second spawn
+roll = 0.0  # rotation around X-axis
+pitch = 0.0  # rotation around Y-axis
+yaw = 3.14  # rotation around Z-axis (radians)
+quaternion2 = quaternion_from_euler(roll, pitch, yaw)
+SECOND_SPAWN = [-4,0.5,0,quaternion2[0],quaternion2[1],quaternion2[2],quaternion2[3]]
+
+# third spawn
+roll = 0.0  # rotation around X-axis
+pitch = 0.0  # rotation around Y-axis
+yaw = 3.14  # rotation around Z-axis (radians)
+quaternion3 = quaternion_from_euler(roll, pitch, yaw)
+THIRD_SPAWN = [-4,-2.3,0,quaternion3[0],quaternion3[1],quaternion3[2],quaternion3[3]]
 
 
 # Callback for the camera image
@@ -32,6 +52,7 @@ def spawn_position(position):
     msg.pose.position.x = position[0]
     msg.pose.position.y = position[1]
     msg.pose.position.z = position[2]
+    # in radian quaternions
     msg.pose.orientation.x = position[3]
     msg.pose.orientation.y = position[4]
     msg.pose.orientation.z = position[5]
@@ -130,6 +151,6 @@ def drive_forward():
 
 if __name__ == '__main__':
     try:
-        drive_forward()
+        spawn_position(THIRD_SPAWN)
     except rospy.ROSInterruptException:
         pass

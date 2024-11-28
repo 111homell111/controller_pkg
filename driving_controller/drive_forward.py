@@ -25,7 +25,7 @@ roll = 0.0  # rotation around X-axis
 pitch = 0.0  # rotation around Y-axis
 yaw = 3.14  # rotation around Z-axis (radians)
 quaternion2 = quaternion_from_euler(roll, pitch, yaw)
-SECOND_SPAWN = [-4,0.5,0,quaternion2[0],quaternion2[1],quaternion2[2],quaternion2[3]]
+SECOND_SPAWN = [-4,0.5,0,-0.01,quaternion2[0],quaternion2[1],quaternion2[2],quaternion2[3]]
 
 # third spawn
 roll = 0.0  # rotation around X-axis
@@ -151,6 +151,6 @@ def drive_forward():
 
 if __name__ == '__main__':
     try:
-        spawn_position(THIRD_SPAWN)
+        spawn_position(SECOND_SPAWN)
     except rospy.ROSInterruptException:
         pass

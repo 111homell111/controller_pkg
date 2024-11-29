@@ -18,21 +18,21 @@ roll = 0.0  # rotation around X-axis
 pitch = 0.0  # rotation around Y-axis
 yaw = 1.57  # rotation around Z-axis (radians)
 quaternion1 = quaternion_from_euler(roll, pitch, yaw)
-FIRST_SPAWN = [0.5,0,0,quaternion1[0], quaternion1[1], quaternion1[2], quaternion1[3]]
+FIRST_SPAWN = [0.5,0,0.2,quaternion1[0], quaternion1[1], quaternion1[2], quaternion1[3]]
 
 # second spawn
 roll = 0.0  # rotation around X-axis
 pitch = 0.0  # rotation around Y-axis
 yaw = 3.14  # rotation around Z-axis (radians)
 quaternion2 = quaternion_from_euler(roll, pitch, yaw)
-SECOND_SPAWN = [-4,0.5,0,-0.01,quaternion2[0],quaternion2[1],quaternion2[2],quaternion2[3]]
+SECOND_SPAWN = [-4,0.5,0.2,quaternion2[0],quaternion2[1],quaternion2[2],quaternion2[3]]
 
 # third spawn
 roll = 0.0  # rotation around X-axis
 pitch = 0.0  # rotation around Y-axis
-yaw = 3.14  # rotation around Z-axis (radians)
+yaw = -0.10  # rotation around Z-axis (radians)
 quaternion3 = quaternion_from_euler(roll, pitch, yaw)
-THIRD_SPAWN = [-4,-2.3,0,quaternion3[0],quaternion3[1],quaternion3[2],quaternion3[3]]
+THIRD_SPAWN = [-4.15,-2.3,0.2,quaternion3[0],quaternion3[1],quaternion3[2],quaternion3[3]]
 
 
 # Callback for the camera image
@@ -81,7 +81,7 @@ def drive_forward():
     rospy.sleep(1)
 
     # Create subscribers
-    rospy.Subscriber('/B1/pi_camera/image_raw', Image, camera_callback)
+    rospy.Subscriber('/B1/camera1/image_raw', Image, camera_callback)
     rospy.Subscriber('/clock', Clock, clock_callback)
 
     # Wait for the Gazebo service to become available
@@ -149,8 +149,73 @@ def drive_forward():
     rospy.loginfo("Stopping the timer")
     timer_publisher.publish(stop_timer_msg)
 
+
+def move_robot(linear_x, angular_z, duration):
+    """
+    Move the robot at the specified linear speed and angular speed for a given duration.
+
+    :param linear_x: Linear speed (positive for forward, negative for backward) in m/s.
+    :param angular_z: Angular speed in rad/s (positive for counter-clockwise rotation, negative for clockwise).
+    :param duration: Duration of the movement in seconds.
+    """
+    # Initialize ROS node
+    rospy.init_node('move_robot', anonymous=True)
+
+    # Create a publisher for the /B1/cmd_vel topic
+    velocity_publisher = rospy.Publisher('/B1/cmd_vel', Twist, queue_size=10)
+
+    # pause for ensuring connections
+    rospy.sleep(1)
+
+    # set the loop rate (Hz)
+    rate = rospy.Rate(10)
+
+    # define twist message
+    vel_msg = Twist()
+    vel_msg.linear.x = linear_x  # linear speed in x-direction
+    vel_msg.angular.z = angular_z  # angular speed in z-direction
+
+    rospy.loginfo(f"Car is moving with linear speed {linear_x} m/s and angular speed {angular_z} rad/s")
+
+    # Start moving
+    start_time = rospy.Time.now()
+    while not rospy.is_shutdown() and (rospy.Time.now() - start_time).to_sec() < duration:
+        velocity_publisher.publish(vel_msg)
+        rate.sleep()
+
+    # Stop the robot after the duration
+    vel_msg.linear.x = 0.0
+    vel_msg.angular.z = 0.0
+    velocity_publisher.publish(vel_msg)
+    rospy.loginfo("Car has stopped")
+
+
+def spawnTo_clue(clue):
+    if (clue == 1):
+        spawn_position(FIRST_SPAWN)
+        move_robot(-4,0,0.65)
+        move_robot(0,-6,0.18)
+        move_robot(2,0,0.3)
+        move_robot(0,0,0.2)
+    elif clue == 2:
+        spawn_position(SECOND_SPAWN)
+        move_robot(0,7,0.183)
+        move_robot(-3,0, 1.2)
+        move_robot(0,-6,0.38)
+        move_robot(0,0,0.2)
+    elif clue == 3:
+        spawn_position(THIRD_SPAWN)
+        # move_robot(-2, 0, 0.75)
+        move_robot(0,6,0.35)
+        move_robot(4, -7, 0.13)
+
 if __name__ == '__main__':
     try:
-        spawn_position(SECOND_SPAWN)
+        # move_robot(2, 0, 0.49)
+        # move_robot(0,6, 0.18)
+        # move_robot(2,0,0.3)
+        # move_robot(0,0,0.2)
+        # spawnTo_clue(1)
+        spawnTo_clue(3)
     except rospy.ROSInterruptException:
         pass

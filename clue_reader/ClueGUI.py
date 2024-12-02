@@ -5,6 +5,7 @@ from python_qt_binding import loadUi
 
 import rospy
 from sensor_msgs.msg import Image
+from std_msgs.msg import String
 import rospkg
 
 import cv2
@@ -20,6 +21,7 @@ import torch.nn as nn
 
 import os
 import string
+from collections import defaultdict
 
 class ClueGUI(QtWidgets.QMainWindow):
 
@@ -29,6 +31,7 @@ class ClueGUI(QtWidgets.QMainWindow):
 
 		rospy.init_node("ClueGUI", anonymous=True)
 		rospy.Subscriber('/B1/rrbot/camera1/image_raw', Image, self.image_callback, queue_size=1)
+		self.score_tracker_pub = rospy.Publisher('/score_tracker', String, queue_size=10)
 		rospack = rospkg.RosPack()
 		package_path = rospack.get_path('controller_pkg') 
 
@@ -47,7 +50,17 @@ class ClueGUI(QtWidgets.QMainWindow):
 		self.CNNModel.load_state_dict(torch.load(model_file, map_location=torch.device('cpu')))
 		self.label_map = list(string.ascii_uppercase + string.digits)
 
-		#self.is_processing = False
+		self.team_name = "Weymen"
+		self.password = "Koo"
+		self.current_guess_counter = defaultdict(lambda: 0)
+		self.sent_contexts = []
+		self.possible_contexts = ["SIZE", "VICTIM", "CRIME", "TIME", "PLACE", "MOTIVE", "WEAPON", "BANDIT"]
+		self.consecutive_empty = 10
+
+		self.start_timer_button.clicked.connect(self.start_timer)
+		self.stop_timer_button.clicked.connect(self.stop_timer)
+		self.restart_button.clicked.connect(self.restart)
+
 
 	# Converts the OpenCV frame to QPixmap for display
 	def convert_cv_to_pixmap(self, cv_img):
@@ -76,9 +89,8 @@ class ClueGUI(QtWidgets.QMainWindow):
 
 	def image_callback(self, msg):
 		try:
-			# Convert the ROS Image message to an OpenCV image
 			cv_image = self.bridge.imgmsg_to_cv2(msg, desired_encoding="bgr8")
-			cv_image = cv_image[200:-100]
+			cv_image = cv_image[200:-100] #Crop out sky and ground
 			self.update_image_label(self.camera_label, cv_image)
 
 			masked_image = self.ImageProcessor.threshold_blue(cv_image, hl=0, hh=10, sl=0, sh=10, vl=80, vh=220) #need to rename, no longer bluemask
@@ -88,28 +100,57 @@ class ClueGUI(QtWidgets.QMainWindow):
 			top_output = ""
 			bottom_output = ""
 
-			if largest_area > 10000: #2700
+			if largest_area > 12000: 
 				clue_board = self.ImageProcessor.rect_and_detect(cv_image)
 				if clue_board is not None:
 					self.update_image_label(self.clue_board_label, clue_board)
 					subimages = self.ImageProcessor.get_subimages(clue_board)
-
+					
+					#Context
 					if (subimages[0] != None):
 						top_stacked_image = self.stack_images_vertically(subimages[0])
 						self.update_image_label(self.top_subimages_label, top_stacked_image)
-						self.top_pred_label.setText(self.predict_word(subimages[0]))
+						top_output = self.predict_word(subimages[0])
+						self.top_pred_label.setText(top_output)
 
-					
+					#Clue
 					if (subimages[1] != None):
 						bottom_stacked_image = self.stack_images_vertically(subimages[1])
 						self.update_image_label(self.bottom_subimages_label, bottom_stacked_image)
-						self.bottom_pred_label.setText(self.predict_word(subimages[1]))
+						bottom_output = self.predict_word(subimages[1])
+						self.bottom_pred_label.setText(bottom_output)
 					
+				print(f"{top_output}, {bottom_output}")
+				if top_output and bottom_output:
+					self.consecutive_empty = 0
+					if top_output in self.possible_contexts and top_output not in self.sent_contexts: #If context is correct
+						guess = f"{top_output},{bottom_output}"
+						self.current_guess_counter[guess] += 1
+				if  self.current_guess_counter and max(self.current_guess_counter.items(), key=lambda x: x[1])[1] > 30:
+					self.send_guess()
+
+	
 			else:
-				pass
-			
+				self.consecutive_empty +=1
+				if self.consecutive_empty == 5: #once we've seen enough empty frames, send best guess
+					if self.current_guess_counter:
+						self.send_guess()
+
+			#print(self.consecutive_empty)
+			self.update_guess_list()
 		except CvBridgeError as e:
 			rospy.logwarn(f"Error converting ROS Image to OpenCV: {e}")
+
+	def send_guess(self):
+		guess = max(self.current_guess_counter.items(), key=lambda x: x[1])[0]
+		context, clue = guess.split(',')
+		context_index = self.possible_contexts.index(context)
+		self.sent_contexts.append(context)
+		message = f'{self.team_name},{self.password},{context_index+1},{clue}'
+		rospy.loginfo(f"Publishing to /score_tracker: {message}")
+		self.score_tracker_pub.publish(message)
+		rospy.sleep(1)
+		self.current_guess_counter = defaultdict(lambda: 0)
 
 
 	def predict_word(self,letter_images):
@@ -122,7 +163,20 @@ class ClueGUI(QtWidgets.QMainWindow):
 				predicted_word = ''.join([self.label_map[label.item()] for label in predicted_labels])
 		return predicted_word
 
-			
+	def update_guess_list(self):
+		"""
+		Updates the current_guesses_list widget to display guesses from current_guess_counter,
+		sorted by the highest count.
+		"""
+		self.current_guesses_widget.clear()  # Clear existing items in the list widget
+
+		# Sort items by count in descending order
+		sorted_guesses = sorted(self.current_guess_counter.items(), key=lambda item: item[1], reverse=True)
+
+		# Add sorted guesses to the list widget
+		for guess, count in sorted_guesses:
+			display_text = f"{guess}: {count}"  # Format guess and its count
+			self.current_guesses_widget.addItem(display_text)
 
 	def stack_images_vertically(self, image_list):
 		# Ensure all images are the same width
@@ -142,6 +196,22 @@ class ClueGUI(QtWidgets.QMainWindow):
 		stacked_image = np.vstack(resized_images)
 		return stacked_image
 	
+	def start_timer(self):
+		message = f'{self.team_name},{self.password},0,NA'
+		rospy.loginfo(f"Publishing to /score_tracker: {message}")
+		self.score_tracker_pub.publish(message)
+		rospy.sleep(1)
+
+	def stop_timer(self):
+		message = f'{self.team_name},{self.password},-1,NA'
+		rospy.loginfo(f"Publishing to /score_tracker: {message}")
+		self.score_tracker_pub.publish(message)
+		rospy.sleep(1)
+
+	def restart(self):
+		self.current_guess_counter = defaultdict(lambda: 0)
+		self.sent_contexts = []
+		#self.consecutive_empty = 0
 
 if __name__ == "__main__":
 	app = QtWidgets.QApplication(sys.argv)

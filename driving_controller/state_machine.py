@@ -50,45 +50,98 @@ class LineFollower:
         self.frame = None
         self.state = "move_forward"  # Initial state: move forward before line following
         self.start_time = rospy.Time.now()
+        self.no_contour_counter = 0  
 
         # Register shutdown callback to stop the robot when the node is shut down
         rospy.on_shutdown(shutdown_callback)
+
+    # def line_following(self, frame):
+    #     gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+    #     _, path_mask = cv2.threshold(gray, 100, 255, cv2.THRESH_BINARY_INV)  # Dark grey path
+    #     _, border_mask = cv2.threshold(gray, 200, 255, cv2.THRESH_BINARY)  # White borders
+    #     contours, _ = cv2.findContours(border_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        
+    #     if contours:
+    #         largest_contour = max(contours, key=cv2.contourArea)
+    #         M = cv2.moments(largest_contour)
+    #         print(f"Contours detected: {len(contours)}")
+
+    #         if M['m00'] != 0:
+    #             cx = int(M['m10'] / M['m00'])
+    #             print(f"Contour center x: {cx}")
+    #         else:
+    #             cx = frame.shape[1] // 2
+    #     else:
+    #         cx = frame.shape[1] // 2
+    #         print("No contours detected.")
+        
+    #     # Adjusting the desired center point to make the robot stay to the left of the white line
+    #     image_center_x = frame.shape[1] // 2
+    #     offset = 300  # Adjust this value to control how far left you want the robot to be
+    #     desired_center_x = image_center_x - offset  # Shift the target center slightly left
+    #     error = cx - desired_center_x  # Use the offset center for error calculation
+
+    #     steering_factor = 0.012
+    #     if (cx < 100):
+    #         steering_factor = 0.016
+    #     angular_velocity = -steering_factor * error
+
+    #     if np.sum(path_mask) > 0:
+    #         linear_velocity = 0.2
+    #     else:
+    #         linear_velocity = 0.0
+
+    #     return linear_velocity, angular_velocity
 
     def line_following(self, frame):
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
         _, path_mask = cv2.threshold(gray, 100, 255, cv2.THRESH_BINARY_INV)  # Dark grey path
         _, border_mask = cv2.threshold(gray, 200, 255, cv2.THRESH_BINARY)  # White borders
         contours, _ = cv2.findContours(border_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-        
+
         if contours:
             largest_contour = max(contours, key=cv2.contourArea)
             M = cv2.moments(largest_contour)
+            print(f"Contours detected: {len(contours)}")
+
             if M['m00'] != 0:
                 cx = int(M['m10'] / M['m00'])
+                print(f"Contour center x: {cx}")
             else:
                 cx = frame.shape[1] // 2
+                print("No contours detected.")
+
+
+            # Reset the no_contour_counter when contour is detected
+            self.no_contour_counter = 0
+
+            image_center_x = frame.shape[1] // 2
+            error = cx - image_center_x + 260
+            steering_factor = 0.01
+            if cx < 100:
+                steering_factor = 0.016
+
+            angular_velocity = -steering_factor * error
+
+            if np.sum(path_mask) > 0:
+                linear_velocity = 0.2
+            else:
+                linear_velocity = 0.0
+
         else:
-            cx = frame.shape[1] // 2
+            # If no contour is detected, increment the counter
+            self.no_contour_counter += 1
 
-        image_center_x = frame.shape[1] // 2
-        error = cx - image_center_x  # Calculate how far off-center the robot is
-
-        # New logic: Make the robot "tolerate" a small error and steer less aggressively
-        steering_factor = 0.005  # Base steering factor for more gradual turns
-        if abs(error) > 5:  # If error is large (i.e., robot is farther from the center)
-            steering_factor = 0.008  # Slightly higher steering factor for sharper turns
-
-        # Angular velocity calculation: The robot should turn left if the error is positive (robot is to the right)
-        # and turn right if the error is negative (robot is to the left)
-        angular_velocity = -steering_factor * error
-
-        # Move forward only if there is some path detected (dark grey area)
-        if np.sum(path_mask) > 0:
-            linear_velocity = 0.2  # Forward speed on the dark grey road
-        else:
-            linear_velocity = 0.0  # Stop if no dark grey path detected
+            # If no contour has been detected for a few frames, turn left
+            if self.no_contour_counter > 5:  # Adjust this threshold based on your needs
+                linear_velocity = 0.0  # Stop forward motion
+                angular_velocity = 0.6  # Turn left
+            else:
+                linear_velocity = 0.0
+                angular_velocity = 0.0  # No movement while waiting for a contour
 
         return linear_velocity, angular_velocity
+
 
 
 
@@ -108,7 +161,7 @@ class LineFollower:
 
                 # Drive to the second clue
                 move_robot(0, -3, 0.35)
-                move_robot(3, 0.739, 2.09)
+                move_robot(3, 0.74, 2.05)
                 self.state = "line_following"  # Transition to line following after movement
             elif self.state == "line_following":
                 # Use the line-following algorithm after moving forward

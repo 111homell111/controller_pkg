@@ -42,24 +42,38 @@ model = tf.keras.models.load_model('IL_clue2_model2.h5')
 
 bridge = CvBridge()
 
+# Publisher to publish the model action
+model_action_publisher = rospy.Publisher('/B1/model_action', String, queue_size=10)
+
 # Callback for the camera image
 def camera_callback(msg):
+    rospy.loginfo("Camera callback triggered")
     try:
         cv_image = bridge.imgmsg_to_cv2(msg, desired_encoding="bgr8")
         resized_image = cv2.resize(cv_image, (64, 64))  # assuming the model expects 64x64 images
         input_data = np.expand_dims(resized_image / 255.0, axis=0)  # normalize and add batch dimension
+        rospy.loginfo("Image processed, making prediction")
         predicted_action = model.predict(input_data, verbose=0)
         action_index = np.argmax(predicted_action)
+        rospy.loginfo(f"Predicted action index: {action_index}")
 
-        # map the action index to linear and angular velocities
+        # Action mapping and publishing
         if action_index == 0:
             linear_x, angular_z = 0.5, 0.0  # forward
+            action = "forward"
         elif action_index == 1:
             linear_x, angular_z = 0.0, 0.5  # turn left
+            action = "left"
         elif action_index == 2:
             linear_x, angular_z = 0.0, -0.5  # turn right
+            action = "right"
         else:
             linear_x, angular_z = 0.0, 0.0  # stop
+            action = "stop"
+
+        # Publish the model's action
+        model_action_publisher.publish(action)
+        rospy.loginfo(f"Model action: {action} (linear_x={linear_x}, angular_z={angular_z})")
 
         # publish the velocities
         velocity_publisher = rospy.Publisher('/B1/cmd_vel', Twist, queue_size=10)
@@ -67,16 +81,14 @@ def camera_callback(msg):
         vel_msg.linear.x = linear_x
         vel_msg.angular.z = angular_z
         velocity_publisher.publish(vel_msg)
-
-        rospy.loginfo(f"Model action: linear_x={linear_x}, angular_z={angular_z}")
-
     except CvBridgeError as e:
         rospy.logerr(f"Error converting image: {e}")
 
 
+
 def model_driving():
     rospy.loginfo("Model is taking over the driving.")
-    rospy.Subscriber('/B1/camera1/image_raw', Image, camera_callback)
+    rospy.Subscriber('/B1/rrbot/camera1/image_raw', Image, camera_callback)
     rospy.spin()
 
 
@@ -123,7 +135,7 @@ def drive_forward():
     rospy.sleep(1)
 
     # Create subscribers
-    rospy.Subscriber('/B1/camera1/image_raw', Image, camera_callback)
+    rospy.Subscriber('/B1/rrbot/camera1/image_raw', Image, camera_callback)
     rospy.Subscriber('/clock', Clock, clock_callback)
 
     # Wait for the Gazebo service to become available
@@ -193,24 +205,41 @@ def drive_forward():
 
 
 def move_robot(linear_x, angular_z, duration):
-    velocity_publisher = rospy.Publisher('/B1/cmd_vel', Twist, queue_size=10)
-    rospy.sleep(1)  # ensure connections
-    rate = rospy.Rate(10)
-    vel_msg = Twist()
-    vel_msg.linear.x = linear_x
-    vel_msg.angular.z = angular_z
+    """
+    Move the robot at the specified linear speed and angular speed for a given duration.
 
-    rospy.loginfo(f"Car moving: linear_x={linear_x}, angular_z={angular_z}")
+    :param linear_x: Linear speed (positive for forward, negative for backward) in m/s.
+    :param angular_z: Angular speed in rad/s (positive for counter-clockwise rotation, negative for clockwise).
+    :param duration: Duration of the movement in seconds.
+    """
+
+    # Create a publisher for the /B1/cmd_vel topic
+    velocity_publisher = rospy.Publisher('/B1/cmd_vel', Twist, queue_size=10)
+
+    # pause for ensuring connections
+    rospy.sleep(1)
+
+    # set the loop rate (Hz)
+    rate = rospy.Rate(10)
+
+    # define twist message
+    vel_msg = Twist()
+    vel_msg.linear.x = linear_x  # linear speed in x-direction
+    vel_msg.angular.z = angular_z  # angular speed in z-direction
+
+    rospy.loginfo(f"Car is moving with linear speed {linear_x} m/s and angular speed {angular_z} rad/s")
+
+    # Start moving
     start_time = rospy.Time.now()
     while not rospy.is_shutdown() and (rospy.Time.now() - start_time).to_sec() < duration:
         velocity_publisher.publish(vel_msg)
         rate.sleep()
 
-    # stop the robot after the duration
+    # Stop the robot after the duration
     vel_msg.linear.x = 0.0
     vel_msg.angular.z = 0.0
     velocity_publisher.publish(vel_msg)
-    rospy.loginfo("Car stopped")
+    rospy.loginfo("Car has stopped")
 
 
 def spawnTo_clue(clue):
@@ -234,7 +263,6 @@ def spawnTo_clue(clue):
 
 if __name__ == '__main__':
     try:
-        print(tf__version__)
         # Initialize the ROS node
         rospy.init_node('robot_control', anonymous=True)
 

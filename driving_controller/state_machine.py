@@ -21,10 +21,25 @@ def move_robot(linear_x, angular_z, duration):
     while not rospy.is_shutdown() and (rospy.Time.now() - start_time).to_sec() < duration:
         velocity_publisher.publish(vel_msg)
         rate.sleep()
+    # Send stop command at the end of movement
     vel_msg.linear.x = 0.0
     vel_msg.angular.z = 0.0
     velocity_publisher.publish(vel_msg)
     rospy.loginfo("Car has stopped")
+
+def stop_robot():
+    """Stop the robot immediately."""
+    velocity_publisher = rospy.Publisher('/B1/cmd_vel', Twist, queue_size=10)
+    stop_msg = Twist()
+    stop_msg.linear.x = 0.0
+    stop_msg.angular.z = 0.0
+    velocity_publisher.publish(stop_msg)
+    rospy.loginfo("Robot stopped.")
+
+def shutdown_callback():
+    """Handles ROS shutdown to stop the robot."""
+    stop_robot()
+    rospy.loginfo("Shutting down and stopping robot.")
 
 class LineFollower:
     def __init__(self):
@@ -36,38 +51,45 @@ class LineFollower:
         self.state = "move_forward"  # Initial state: move forward before line following
         self.start_time = rospy.Time.now()
 
+        # Register shutdown callback to stop the robot when the node is shut down
+        rospy.on_shutdown(shutdown_callback)
+
     def line_following(self, frame):
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-        
-        # Create masks for the dark grey path (dark regions) and the white borders (bright regions)
         _, path_mask = cv2.threshold(gray, 100, 255, cv2.THRESH_BINARY_INV)  # Dark grey path
         _, border_mask = cv2.threshold(gray, 200, 255, cv2.THRESH_BINARY)  # White borders
-        
         contours, _ = cv2.findContours(border_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        
         if contours:
             largest_contour = max(contours, key=cv2.contourArea)
             M = cv2.moments(largest_contour)
             if M['m00'] != 0:
                 cx = int(M['m10'] / M['m00'])
             else:
-                cx = frame.shape[1] // 2  # Default to center if no contours found
+                cx = frame.shape[1] // 2
         else:
             cx = frame.shape[1] // 2
 
         image_center_x = frame.shape[1] // 2
-        
-        # Modify error to shift the robot to the left of the line
-        error = cx - image_center_x - 50  # The -50 bias makes the robot stay left of the line
-        steering_factor = 0.005
+        error = cx - image_center_x  # Calculate how far off-center the robot is
+
+        # New logic: Make the robot "tolerate" a small error and steer less aggressively
+        steering_factor = 0.005  # Base steering factor for more gradual turns
+        if abs(error) > 5:  # If error is large (i.e., robot is farther from the center)
+            steering_factor = 0.008  # Slightly higher steering factor for sharper turns
+
+        # Angular velocity calculation: The robot should turn left if the error is positive (robot is to the right)
+        # and turn right if the error is negative (robot is to the left)
         angular_velocity = -steering_factor * error
 
-        # If there's enough dark grey area, move forward; otherwise, stop
+        # Move forward only if there is some path detected (dark grey area)
         if np.sum(path_mask) > 0:
-            linear_velocity = 0.2  # Forward speed
+            linear_velocity = 0.2  # Forward speed on the dark grey road
         else:
-            linear_velocity = 0.0  # Stop if no path detected
+            linear_velocity = 0.0  # Stop if no dark grey path detected
 
         return linear_velocity, angular_velocity
+
 
 
     def camera_callback(self, msg):

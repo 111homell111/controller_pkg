@@ -211,14 +211,6 @@ def spawnTo_clue(clue):
 
 if __name__ == '__main__':
     try:
-<<<<<<< HEAD
-        move_robot(2, 0, 0.49)
-        move_robot(0,6, 0.18)
-        move_robot(2,0,0.3)
-        move_robot(0,0,0.2)
-        spawnTo_clue(1)
-        spawnTo_clue(2)
-=======
         #first clue
         move_robot(0,3, 0.18)
         move_robot(2.5, 0, 0.49)
@@ -233,7 +225,6 @@ if __name__ == '__main__':
         # move_robot(2.9, -0.89, 0.6)
         # move_robot(0,0,0.2)
         spawnTo_clue(1)
->>>>>>> 44f359d9ac5ea990ad9a539e0bda766345cc1ea5
         spawnTo_clue(3)
     except rospy.ROSInterruptException:
         pass

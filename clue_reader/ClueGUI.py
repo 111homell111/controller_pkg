@@ -13,7 +13,7 @@ import sys
 import numpy as np
 
 from ImageProcessor import ImageProcessor
-from CNNModel import CNNModelGray
+from CNNModel import CNNModelFast
 
 import torch
 import torch.nn as nn
@@ -28,7 +28,7 @@ class ClueGUI(QtWidgets.QMainWindow):
 		loadUi("./ClueGUI.ui", self)
 
 		rospy.init_node("ClueGUI", anonymous=True)
-		rospy.Subscriber('/B1/rrbot/camera1/image_raw', Image, self.image_callback)
+		rospy.Subscriber('/B1/rrbot/camera1/image_raw', Image, self.image_callback, queue_size=1)
 		rospack = rospkg.RosPack()
 		package_path = rospack.get_path('controller_pkg') 
 
@@ -40,12 +40,14 @@ class ClueGUI(QtWidgets.QMainWindow):
 
 		model_path = os.path.join(package_path, 'clue_reader')
 
-		self.CNNModel = CNNModelGray()
-		model_file = os.path.join(model_path, 'test_cnn_gray.pth')
+		self.CNNModel = CNNModelFast()
+		model_file = os.path.join(model_path, 'test_cnn_fast.pth')
 		if not os.path.exists(model_file):
 			raise FileNotFoundError(f"Model file not found: {model_file}")
 		self.CNNModel.load_state_dict(torch.load(model_file, map_location=torch.device('cpu')))
 		self.label_map = list(string.ascii_uppercase + string.digits)
+
+		#self.is_processing = False
 
 	# Converts the OpenCV frame to QPixmap for display
 	def convert_cv_to_pixmap(self, cv_img):
@@ -76,57 +78,51 @@ class ClueGUI(QtWidgets.QMainWindow):
 		try:
 			# Convert the ROS Image message to an OpenCV image
 			cv_image = self.bridge.imgmsg_to_cv2(msg, desired_encoding="bgr8")
+			cv_image = cv_image[200:-100]
 			self.update_image_label(self.camera_label, cv_image)
 
-			masked_image = self.ImageProcessor.threshold_blue(cv_image[150: -100], sl=110)
+			masked_image = self.ImageProcessor.threshold_blue(cv_image, hl=0, hh=10, sl=0, sh=10, vl=80, vh=220) #need to rename, no longer bluemask
 			self.update_image_label(self.blue_mask_label, masked_image)
-			largest_area = self.ImageProcessor.rect_and_detect(cv_image)
+			largest_area = self.ImageProcessor.biggest_blue(cv_image)
 		
 			top_output = ""
 			bottom_output = ""
 
-			if largest_area > 27000: #change this
-				clue_board = self.ImageProcessor.sift_and_shift(cv_image)
-				self.update_image_label(self.clue_board_label, clue_board)
-				#blue_mask = self.ImageProcessor.threshold_blue(clue_board)
-				#self.update_image_label(self.blue_mask_label, blue_mask)
-				subimages = self.ImageProcessor.get_subimages(clue_board)
+			if largest_area > 10000: #2700
+				clue_board = self.ImageProcessor.rect_and_detect(cv_image)
+				if clue_board is not None:
+					self.update_image_label(self.clue_board_label, clue_board)
+					subimages = self.ImageProcessor.get_subimages(clue_board)
 
-				if (subimages[0] != None):
-					top_stacked_image = self.stack_images_vertically(subimages[0])
-					self.update_image_label(self.top_subimages_label, top_stacked_image)
-					with torch.no_grad():
-						for letter in subimages[0]:
-							#print(f"size is {letter.shape}")
-							output = self.CNNModel(torch.from_numpy(letter).float().unsqueeze(0))
-							_, predicted_label = torch.max(output, 1)
-							top_output += self.label_map[predicted_label.item()]
-					#print(f"Top output: {top_output}")
-					self.top_pred_label.setText(top_output)
+					if (subimages[0] != None):
+						top_stacked_image = self.stack_images_vertically(subimages[0])
+						self.update_image_label(self.top_subimages_label, top_stacked_image)
+						self.top_pred_label.setText(self.predict_word(subimages[0]))
 
-				
-				if (subimages[1] != None):
-					bottom_stacked_image = self.stack_images_vertically(subimages[1])
-					self.update_image_label(self.bottom_subimages_label, bottom_stacked_image)
-					with torch.no_grad():
-						for letter in subimages[1]:
-					#		print(f"size is {letter.shape}")
-							output = self.CNNModel(torch.from_numpy(letter).float().unsqueeze(0))
-							_, predicted_label = torch.max(output, 1)
-							bottom_output += self.label_map[predicted_label.item()]
-					self.bottom_pred_label.setText(bottom_output)
-
-				
+					
+					if (subimages[1] != None):
+						bottom_stacked_image = self.stack_images_vertically(subimages[1])
+						self.update_image_label(self.bottom_subimages_label, bottom_stacked_image)
+						self.bottom_pred_label.setText(self.predict_word(subimages[1]))
+					
 			else:
-				#print("PeePeePooPOO")
 				pass
 			
 		except CvBridgeError as e:
 			rospy.logwarn(f"Error converting ROS Image to OpenCV: {e}")
 
 
-	def predict_letter():
-		"banaas"
+	def predict_word(self,letter_images):
+		predicted_word = ""
+		if letter_images != None and len(letter_images) != 0:
+			with torch.no_grad():
+				batch = torch.stack([torch.from_numpy(img).float() for img in letter_images])
+				outputs = self.CNNModel(batch)
+				_, predicted_labels = torch.max(outputs, 1)
+				predicted_word = ''.join([self.label_map[label.item()] for label in predicted_labels])
+		return predicted_word
+
+			
 
 	def stack_images_vertically(self, image_list):
 		# Ensure all images are the same width

@@ -77,9 +77,9 @@ class ImageProcessor():
 		# If no good matches or descriptors are found, return None
 		return None
 
-	def rect_and_detect(self, raw_image):
+	def biggest_blue(self, raw_image):
 		largest_area = 0
-		masked_image = self.threshold_blue(raw_image[150: -100], sl=110)
+		masked_image = self.threshold_blue(raw_image, sl=110)
 		contours, _ = cv2.findContours(masked_image, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 		#cv2.drawContours(raw_image,[max(contours, key=cv2.contourArea)], -1, (255,0,0), 8)  # Draw with different colors
 		
@@ -90,18 +90,91 @@ class ImageProcessor():
 			print(f"Largest area: {largest_area}")
 		return largest_area
 
+	def order_corners(self, corners):
+		"""
+		Orders the corners in the correct sequence:
+		Top-left, Top-right, Bottom-right, Bottom-left.
+		"""
+		# Sum of x and y will be smallest for top-left, largest for bottom-right
+		# Difference (y - x) will be smallest for top-right, largest for bottom-left
+		s = corners.sum(axis=1)
+		diff = np.diff(corners, axis=1)
+
+		# Top-left: smallest sum
+		top_left = corners[np.argmin(s)]
+		# Bottom-right: largest sum
+		bottom_right = corners[np.argmax(s)]
+		# Top-right: smallest difference
+		top_right = corners[np.argmin(diff)]
+		# Bottom-left: largest difference
+		bottom_left = corners[np.argmax(diff)]
+
+		return np.array([top_left, top_right, bottom_right, bottom_left], dtype="float32")
 
 
-	def threshold_blue(self, image, sl=90, vl=50, sh=255, vh=250):
+	def rect_and_detect(self, raw_frame):
+		"""
+		Perform inverse perspective transform on the largest blue rectangle in the image.
+		"""
+		blue_mask = self.threshold_blue(raw_frame, hl=0, hh=10, sl=0, sh=10, vl=90, vh=220) #this is no longer blue but grey, refactor later
+
+		kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (15, 15))
+
+		# Apply morphological closing
+		blue_mask = cv2.morphologyEx(blue_mask, cv2.MORPH_CLOSE, kernel)
+
+		# Step 2: Find contours
+		contours, _ = cv2.findContours(blue_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+		if not contours:
+			print("No contours found!")
+			return None
+
+		# Step 3: Find the largest contour
+		largest_contour = max(contours, key=cv2.contourArea)
+
+		# Step 4: Approximate the contour to 4 points
+		epsilon = 0.02 * cv2.arcLength(largest_contour, True)
+		approx = cv2.approxPolyDP(largest_contour, epsilon, True)
+
+		if len(approx) != 4:
+			print("The detected shape does not have 4 corners.")
+			return None
+
+		# Step 5: Extract and order corners
+		corners = np.array([point[0] for point in approx], dtype="float32")
+		ordered_corners = self.order_corners(corners)
+
+		# Step 6: Define the destination points
+		width, height = 550, 350
+		destination_points = np.array([
+			[0, 0],
+			[width - 1, 0],
+			[width - 1, height - 1],
+			[0, height - 1]
+		], dtype="float32")
+
+		# Step 7: Compute the perspective transform matrix
+		transform_matrix = cv2.getPerspectiveTransform(ordered_corners, destination_points)
+
+		# Step 8: Apply the inverse perspective transform
+		warped_image = cv2.warpPerspective(raw_frame, transform_matrix, (width, height))
+
+		return warped_image
+
+
+	def threshold_blue(self, image, hl=100, hh = 130, sl=80, sh = 255, vl=50, vh=255):
 		"""
 		please give me a BGR image
 		"""
 		hsv_image = cv2.cvtColor(image.copy(), cv2.COLOR_BGR2HSV)
-		lower_blue = np.array([100, sl, vl])  
-		upper_blue = np.array([130, sh, vh])  
+		lower_blue = np.array([hl, sl, vl])
+		upper_blue = np.array([hh, sh, vh])
 		blue_mask = cv2.inRange(hsv_image, lower_blue, upper_blue)
+
 		#blue_only = cv2.bitwise_and(image, image, mask=blue_mask)
 		return blue_mask
+
 	
 	
 	

@@ -2,17 +2,18 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-class CNNModelGray(nn.Module):
+
+class CNNModelFast(nn.Module):
     def __init__(self):
         super().__init__()
         # Convolutional layers
-        self.conv1 = nn.Conv2d(in_channels=1, out_channels=32, kernel_size=3, stride=1, padding=1) 
-        self.conv2 = nn.Conv2d(in_channels=32, out_channels=64, kernel_size=3, stride=1, padding=1)  
-        self.conv3 = nn.Conv2d(in_channels=64, out_channels=128, kernel_size=3, stride=1, padding=1)  
+        self.conv1 = nn.Conv2d(in_channels=1, out_channels=32, kernel_size=3, stride=1, padding=1)
+        self.conv2 = nn.Conv2d(in_channels=32, out_channels=64, kernel_size=3, stride=1, padding=1)
+        self.conv3 = nn.Conv2d(in_channels=64, out_channels=128, kernel_size=3, stride=1, padding=1)
 
         # Fully connected layers
-        self.fc1 = nn.Linear(128 * 4 * 3, 4096)  # Adjusted for the output of the convolutional layers
-        self.fc2 = nn.Linear(4096, 36)  # Assuming 36 output classes (e.g., A-Z, 0-9)
+        self.fc1 = nn.Linear(128 * 4 * 3, 200)  # Adjusted for the output of the convolutional layers
+        self.fc2 = nn.Linear(200, 36)  # Assuming 36 output classes (e.g., A-Z, 0-9)
 
         # Max Pooling layer
         self.pool = nn.MaxPool2d(kernel_size=2, stride=2)

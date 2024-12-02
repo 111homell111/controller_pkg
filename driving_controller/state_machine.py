@@ -2,15 +2,86 @@
 import rospy
 from geometry_msgs.msg import Twist
 from sensor_msgs.msg import Image
+from std_msgs.msg import String
+from gazebo_msgs.srv import SetModelState
+from gazebo_msgs.msg import ModelState
 from cv_bridge import CvBridge
 import cv2
+from tf.transformations import quaternion_from_euler
 import numpy as np
+
+
+# first spawn point
+roll = 0.0  # rotation around X-axis
+pitch = 0.0  # rotation around Y-axis
+yaw = 1.57  # rotation around Z-axis (radians)
+quaternion1 = quaternion_from_euler(roll, pitch, yaw)
+FIRST_SPAWN = [0.5,0,0.2,quaternion1[0], quaternion1[1], quaternion1[2], quaternion1[3]]
+
+# second spawn
+roll = 0.0  # rotation around X-axis
+pitch = 0.0  # rotation around Y-axis
+yaw = 3.14  # rotation around Z-axis (radians)
+quaternion2 = quaternion_from_euler(roll, pitch, yaw)
+SECOND_SPAWN = [-4,0.5,0.2,quaternion2[0],quaternion2[1],quaternion2[2],quaternion2[3]]
+
+# third spawn
+roll = 0.0  # rotation around X-axis
+pitch = 0.0  # rotation around Y-axis
+yaw = -0.10  # rotation around Z-axis (radians)
+quaternion3 = quaternion_from_euler(roll, pitch, yaw)
+THIRD_SPAWN = [-4.15,-2.3,0.2,quaternion3[0],quaternion3[1],quaternion3[2],quaternion3[3]]
+
+
+
+def spawn_position(position):
+    msg = ModelState()
+    msg.model_name = 'B1'
+
+    msg.pose.position.x = position[0]
+    msg.pose.position.y = position[1]
+    msg.pose.position.z = position[2]
+    # in radian quaternions
+    msg.pose.orientation.x = position[3]
+    msg.pose.orientation.y = position[4]
+    msg.pose.orientation.z = position[5]
+    msg.pose.orientation.w = position[6]
+
+    rospy.wait_for_service('/gazebo/set_model_state')
+    try:
+        set_state = rospy.ServiceProxy('/gazebo/set_model_state', SetModelState)
+        resp = set_state(msg)
+        rospy.loginfo("Model state set successfully")
+    except rospy.ServiceException:
+        rospy.logerr("Service call failed")
+
+
+def spawnTo_clue(clue):
+    if (clue == 1):
+        spawn_position(FIRST_SPAWN)
+        move_robot(-4,0,0.65)
+        move_robot(0,-6,0.18)
+        move_robot(2,0,0.3)
+        move_robot(0,0,0.2)
+        move_robot(0,6,0.21)
+    elif clue == 2:
+        spawn_position(SECOND_SPAWN)
+        move_robot(0,7,0.183)
+        move_robot(-3,0, 1.2)
+        move_robot(0,-6,0.38)
+        move_robot(0,0,0.2)
+    elif clue == 3:
+        spawn_position(THIRD_SPAWN)
+        # move_robot(-2, 0, 0.75)
+        move_robot(0,6,0.35)
+        move_robot(4, -7, 0.13)
+
 
 def move_robot(linear_x, angular_z, duration):
     """
     Move the robot at the specified linear speed and angular speed for a given duration.
     """
-    velocity_publisher = rospy.Publisher('/B1/cmd_vel', Twist, queue_size=10)
+    velocity_publisher = rospy.Publisher('/B1/cmd_vel', Twist, queue_size=1)
     rospy.sleep(1)
     rate = rospy.Rate(10)
     vel_msg = Twist()
@@ -34,6 +105,7 @@ def stop_robot():
     stop_msg.linear.x = 0.0
     stop_msg.angular.z = 0.0
     velocity_publisher.publish(stop_msg)
+    rospy.sleep(1)
     rospy.loginfo("Robot stopped.")
 
 def shutdown_callback():
@@ -48,14 +120,23 @@ class LineFollower:
         rospy.Subscriber('/B1/rrbot/camera1/image_raw', Image, self.camera_callback)
         self.bridge = CvBridge()
         self.frame = None
-        self.state = "initial_movement"  # Start with initial movement state
+        # self.state = "initial_movement"  # Start with initial movement state
+        self.state = "truck_teleport"
         self.start_time = rospy.Time.now()
         self.no_contour_counter = 0  
         self.clueboard_center = None  # To store the center of the detected clueboard
 
-        self.pub_image = rospy.Publisher('/B1/rrbot/camera1/clueboard_image', Image, queue_size=10)  # For publishing image with highlighted clueboards
+        self.pub_image = rospy.Publisher('/B1/rrbot/camera1/clueboard_image', Image, queue_size=1)  # For publishing image with highlighted clueboards
         
+
         rospy.on_shutdown(shutdown_callback)
+
+    def end(self):
+        rospy.on_shutdown(shutdown_callback)
+
+    def truck_teleport(self):
+        spawnTo_clue(1)
+        self.state = "line_following"
 
     
     def initial_movement(self):
@@ -101,7 +182,7 @@ class LineFollower:
         cy = int(moments['m01'] / moments['m00']) + height // 2  # Adjust for bottom-half cropping
 
         # Determine angular velocity based on contour's position
-        angular_velocity = 0.002 * (width // 2 - cx)
+        angular_velocity = 0.004 * (width // 2 - cx - 350)
 
         # Avoid crossing the contour: increase angular velocity if the contour is very close
         bottom_of_contour = max(leftmost_contour, key=lambda point: point[0][1])[0][1] + height // 2
@@ -111,11 +192,19 @@ class LineFollower:
         # Highlight the selected contour for visualization
         highlighted_frame = frame.copy()
         cv2.drawContours(highlighted_frame[height // 2 :, :], [leftmost_contour], -1, (0, 255, 0), 3)
-        cv2.circle(highlighted_frame, (cx, cy), 5, (0, 0, 255), -1)
+
+        # Publish the frame with highlighted contours
         self.publish_frame_with_highlights(highlighted_frame, contours)
 
+        linear_velocity = 0.2
+
         # Set constant linear velocity, but slow down if the robot is very close to the line
-        linear_velocity = 0.2 if bottom_of_contour < (height - 50) else 0.1
+        linear_velocity = 0.4 if bottom_of_contour < (height - 50) else 0.2
+
+
+
+
+
 
 
 
@@ -267,11 +356,18 @@ class LineFollower:
 
     def camera_callback(self, msg):
         try:
+            linear_velocity = 0.0
+            angular_velocity = 0.0
             self.frame = self.bridge.imgmsg_to_cv2(msg, desired_encoding='bgr8')
             if self.state == "initial_movement":
                 self.initial_movement()
             elif self.state == "line_following":
                 linear_velocity, angular_velocity = self.line_following(self.frame)
+            elif self.state == "end":
+                linear_velocity = 0.0
+                angular_velocity = 0.0
+            elif self.state == "truck_teleport":
+                self.truck_teleport()
             # elif self.state == "approaching_clueboard":
             #     linear_velocity, angular_velocity = self.approaching_clueboard(self.frame)
 
@@ -299,4 +395,7 @@ if __name__ == '__main__':
         line_follower = LineFollower()
         rospy.spin()
     except rospy.ROSInterruptException:
+        rospy.on_shutdown(shutdown_callback)
         pass
+    except KeyboardInterrupt:
+        rospy.on_shutdown(shutdown_callback)

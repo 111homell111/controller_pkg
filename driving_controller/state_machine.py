@@ -57,6 +57,7 @@ class LineFollower:
         
         rospy.on_shutdown(shutdown_callback)
 
+    
     def initial_movement(self):
         """Handle the hardcoded initial movement."""
         move_robot(0, 3, 0.18)
@@ -68,48 +69,65 @@ class LineFollower:
         self.state = "line_following"  # Transition to line following after movement
 
     def line_following(self, frame):
-        """Line following logic."""
+        """
+        Adjust robot velocity to stay within the road bounded by white lines.
+        Ensures the leftmost white contour stays to the robot's left.
+        Publishes an image with the guide contour highlighted.
+        """
+        # Convert frame to grayscale and threshold to binary
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-        _, path_mask = cv2.threshold(gray, 100, 255, cv2.THRESH_BINARY_INV)  # Dark grey path
-        _, border_mask = cv2.threshold(gray, 200, 255, cv2.THRESH_BINARY)  # White borders
-        contours, _ = cv2.findContours(border_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        _, binary = cv2.threshold(gray, 200, 255, cv2.THRESH_BINARY)
 
-        if contours:
-            largest_contour = max(contours, key=cv2.contourArea)
-            M = cv2.moments(largest_contour)
-            print(f"Contours detected: {len(contours)}")
+        # Focus only on the bottom half of the frame
+        height, width = frame.shape[:2]
+        binary_bottom = binary[height // 2 :, :]
 
-            if M['m00'] != 0:
-                cx = int(M['m10'] / M['m00'])
-                print(f"Contour center x: {cx}")
-            else:
-                cx = frame.shape[1] // 2
-                print("No contours detected.")
+        # Find contours in the bottom half
+        contours, _ = cv2.findContours(binary_bottom, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
-            # Reset the no_contour_counter when contour is detected
-            self.no_contour_counter = 0
+        if not contours:
+            rospy.logwarn("No contours found in the bottom half! Robot stopping.")
+            return 0.0, 0.0  # Stop the robot
 
-            image_center_x = frame.shape[1] // 2
-            error = cx - image_center_x + 260
-            steering_factor = 0.01
-            if cx < 100:
-                steering_factor = 0.016
+        # Identify the leftmost contour
+        leftmost_contour = min(contours, key=lambda cnt: cv2.boundingRect(cnt)[0])
 
-            angular_velocity = -steering_factor * error
+        # Compute the centroid of the selected contour
+        moments = cv2.moments(leftmost_contour)
+        if moments['m00'] == 0:  # Avoid division by zero
+            rospy.logwarn("Degenerate contour with zero area.")
+            return 0.0, 0.0  # Stop the robot
+        cx = int(moments['m10'] / moments['m00'])
+        cy = int(moments['m01'] / moments['m00']) + height // 2  # Adjust for bottom-half cropping
 
-            if np.sum(path_mask) > 0:
-                linear_velocity = 0.2
-            else:
-                linear_velocity = 0.0
+        # Determine angular velocity based on contour's position
+        angular_velocity = 0.002 * (width // 2 - cx)
 
-        else:
-            self.no_contour_counter += 1
-            if self.no_contour_counter > 5:
-                linear_velocity = 0.0
-                angular_velocity = 0.6
-            else:
-                linear_velocity = 0.0
-                angular_velocity = 0.0
+        # Avoid crossing the contour: increase angular velocity if the contour is very close
+        bottom_of_contour = max(leftmost_contour, key=lambda point: point[0][1])[0][1] + height // 2
+        if bottom_of_contour > (height - 50):  # Contour is near the bottom of the frame
+            angular_velocity *= 2  # Turn more aggressively
+
+        # Highlight the selected contour for visualization
+        highlighted_frame = frame.copy()
+        cv2.drawContours(highlighted_frame[height // 2 :, :], [leftmost_contour], -1, (0, 255, 0), 3)
+        cv2.circle(highlighted_frame, (cx, cy), 5, (0, 0, 255), -1)
+        self.publish_frame_with_highlights(highlighted_frame, contours)
+
+        # Set constant linear velocity, but slow down if the robot is very close to the line
+        linear_velocity = 0.2 if bottom_of_contour < (height - 50) else 0.1
+
+
+
+        # Clueboard detection logic (commented out for now)
+        # if self.detect_clueboard(frame):
+        #     print("Clueboard detected! Switching state.")
+        #     self.state = "approach_clueboard"
+        #     return 0.0, 0.0  # Stop movement while switching state
+
+        # Publish highlighted frame
+   
+
 
         # Clueboard detection logic (debugging)
         # if self.detect_clueboard(frame):
@@ -186,20 +204,23 @@ class LineFollower:
                     cv2.rectangle(frame, (x, y), (x + w, y + h), (0, 255, 0), 3)  # Green bounding box
 
             # Publish the frame with highlighted clueboards
-            self.publish_frame_with_highlights(frame)
+            self.publish_frame_with_highlights(frame, [])
 
             return True
         return False
 
 
-    def publish_frame_with_highlights(self, frame):
-        """Publish the frame with highlighted clueboards to a ROS topic."""
-        try:
-            # Convert the OpenCV frame to a ROS image message
-            ros_image = self.bridge.cv2_to_imgmsg(frame, encoding="bgr8")
-            self.pub_image.publish(ros_image)
-        except Exception as e:
-            rospy.logerr(f"Error publishing image: {e}")
+    def publish_frame_with_highlights(self, frame, contours):
+        """
+        Publish an image with highlighted contours.
+        """
+        if contours:
+            for contour in contours:
+                cv2.drawContours(frame, [contour], -1, (0, 255, 0), 3)  # Green for contours
+        # Convert to ROS Image message
+        msg = self.bridge.cv2_to_imgmsg(frame, encoding="bgr8")
+        self.pub_image.publish(msg)
+
 
     def get_clueboard_size(self, frame):
         """Calculate and return the size of the clueboard (area of contour)."""

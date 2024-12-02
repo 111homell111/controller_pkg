@@ -219,13 +219,12 @@ if __name__ == '__main__':
         move_robot(0,0,0.2)
         
 
-        # #second clue
-        # move_robot(0,-6, 0.20)
-        # move_robot(3, 0.735, 2.09)
-        # move_robot(3, -0.85, 0.6)
-        # move_robot(1,0,0.1)
+        #second clue
+        move_robot(0,-3, 0.35)
+        move_robot(3, 0.739, 2.09)
+        # move_robot(2.9, -0.89, 0.6)
         # move_robot(0,0,0.2)
-        spawnTo_clue(1)
-        spawnTo_clue(3)
+        # spawnTo_clue(1)
+        # spawnTo_clue(3)
     except rospy.ROSInterruptException:
         pass

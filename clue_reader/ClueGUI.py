@@ -77,7 +77,7 @@ class ClueGUI(QtWidgets.QMainWindow):
 		self.consecutive_empty = 10
 
 		if self.cv_image_1 is None:
-			print("WAHHHHHH")
+			print("WAHHHHHH I WANNA CRY")
 		self.cv_image = self.compare_and_choose_best_image()
 
 		# if self.cv_image is not None:
@@ -87,18 +87,18 @@ class ClueGUI(QtWidgets.QMainWindow):
 
 		
 
-		print(f"{self.camera1}")
-		print(f"{self.camera2}")
-		print(f"{self.camera3}")
+		# print(f"{self.camera1}")
+		# print(f"{self.camera2}")
+		# print(f"{self.camera3}")
 
 		# comparing which one has the largest clueboard
-		if cv2.norm(self.cv_image_3, self.cv_image, cv2.NORM_L2) == 0:
+		if self.cv_image_3 is not None and cv2.norm(self.cv_image_3, self.cv_image, cv2.NORM_L2) == 0:
 			rospy.Subscriber('/B1/rrbot/camera3/image_raw', Image, self.image_callback, queue_size=1)
 			print(f"camera 3 is being read")
-		elif cv2.norm(self.cv_image_2, self.cv_image, cv2.NORM_L2) == 0:
+		elif self.cv_image_2 is not None and cv2.norm(self.cv_image_2, self.cv_image, cv2.NORM_L2) == 0:
 			rospy.Subscriber('/B1/rrbot/camera2/image_raw', Image, self.image_callback, queue_size=1)
 			print(f"camera2 is being read")
-		else:
+		else: #take camera1 output as default
 			rospy.Subscriber('/B1/rrbot/camera1/image_raw', Image, self.image_callback, queue_size=1)
 			print(f"camera1 is being read")
 
@@ -218,8 +218,24 @@ class ClueGUI(QtWidgets.QMainWindow):
 
 	def image_callback(self, msg):
 		try:
-			cv_image = self.bridge.imgmsg_to_cv2(msg, desired_encoding="bgr8")
-			cv_image = cv_image[200:-100] #Crop out sky and ground
+			# cv_image = self.bridge.imgmsg_to_cv2(msg, desired_encoding="bgr8")
+			# cv_image = cv_image[200:-100] #Crop out sky and ground
+
+			 # ensure all camera images are initialized
+			if self.cv_image_1 is None or self.cv_image_2 is None or self.cv_image_3 is None:
+				rospy.logwarn("Waiting for all camera images to initialize...")
+				# take default?
+				cv_image = self.bridge.imgmsg_to_cv2(msg, desired_encoding="bgr8")
+				cv_image = cv_image[200:-100] #Crop out sky and ground
+			else:
+				# dynamically choose image with the largest clueboard
+				self.cv_image = self.compare_and_choose_best_image()
+				cv_image = self.cv_image
+
+			if self.cv_image is None:
+				rospy.logwarn("No valid clueboard detected in any camera.")
+				return
+			
 			self.update_image_label(self.camera_label, cv_image)
 
 			masked_image = self.ImageProcessor.threshold_blue(cv_image, hl=0, hh=10, sl=0, sh=10, vl=80, vh=220) #need to rename, no longer bluemask. greymask

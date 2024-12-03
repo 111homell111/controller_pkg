@@ -38,6 +38,8 @@ class ClueGUI(QtWidgets.QMainWindow):
 		self.cv_image_2 = None
 		self.cv_image_3 = None
 
+		# manual flags for synchronization. Kinda? Ensures one callback has happened before moving on to next.
+		# maybe not necessary
 		self.camera1 = True
 		self.camera2 = False
 		self.camera3 = False
@@ -56,25 +58,7 @@ class ClueGUI(QtWidgets.QMainWindow):
 
 		self.ImageProcessor = ImageProcessor()
 		
-		self.cv_image = self.compare_and_choose_best_image()
-
-		# if self.cv_image is not None:
-		# 	# Manually call image_callback with the current cv_image
-		# 	msg = self.bridge.cv2_to_imgmsg(self.cv_image, encoding="bgr8")
-		# 	self.image_callback(msg)
-
-		if self.cv_image_2 is None:
-			print("WAHHHHHH")
-
-		if cv2.norm(self.cv_image_2, self.cv_image, cv2.NORM_L2):
-			rospy.Subscriber('/B1/rrbot/camera2/image_raw', Image, self.image_callback, queue_size=1)
-		elif cv2.norm(self.cv_image_3, self.cv_image, cv2.NORM_L2):
-			rospy.Subscriber('/B1/rrbot/camera2/image_raw', Image, self.image_callback, queue_size=1)
-		else:
-			rospy.Subscriber('/B1/rrbot/camera1/image_raw', Image, self.image_callback, queue_size=1)
-
-
-		self.update_image_label(self.template_label, self.ImageProcessor.get_template_image())
+		
 
 		model_path = os.path.join(package_path, 'clue_reader')
 
@@ -92,6 +76,35 @@ class ClueGUI(QtWidgets.QMainWindow):
 		self.possible_contexts = ["SIZE", "VICTIM", "CRIME", "TIME", "PLACE", "MOTIVE", "WEAPON", "BANDIT"]
 		self.consecutive_empty = 10
 
+		if self.cv_image_1 is None:
+			print("WAHHHHHH")
+		self.cv_image = self.compare_and_choose_best_image()
+
+		# if self.cv_image is not None:
+		# 	# Manually call image_callback with the current cv_image
+		# 	msg = self.bridge.cv2_to_imgmsg(self.cv_image, encoding="bgr8")
+		# 	self.image_callback(msg)
+
+		
+
+		print(f"{self.camera1}")
+		print(f"{self.camera2}")
+		print(f"{self.camera3}")
+
+		# comparing which one has the largest clueboard
+		if cv2.norm(self.cv_image_3, self.cv_image, cv2.NORM_L2) == 0:
+			rospy.Subscriber('/B1/rrbot/camera3/image_raw', Image, self.image_callback, queue_size=1)
+			print(f"camera 3 is being read")
+		elif cv2.norm(self.cv_image_2, self.cv_image, cv2.NORM_L2) == 0:
+			rospy.Subscriber('/B1/rrbot/camera2/image_raw', Image, self.image_callback, queue_size=1)
+			print(f"camera2 is being read")
+		else:
+			rospy.Subscriber('/B1/rrbot/camera1/image_raw', Image, self.image_callback, queue_size=1)
+			print(f"camera1 is being read")
+
+
+		self.update_image_label(self.template_label, self.ImageProcessor.get_template_image())
+	
 		self.start_timer_button.clicked.connect(self.start_timer)
 		self.stop_timer_button.clicked.connect(self.stop_timer)
 		self.restart_button.clicked.connect(self.restart)
@@ -168,6 +181,7 @@ class ClueGUI(QtWidgets.QMainWindow):
 		# Compare the clueboard sizes from each camera
 		max_area = 0
 		best_image = None
+		camera = None
 
 		# Check camera 1
 		if self.cv_image_1 is not None:
@@ -176,6 +190,7 @@ class ClueGUI(QtWidgets.QMainWindow):
 			if area_1 > max_area:
 				max_area = area_1
 				best_image = self.cv_image_1
+				camera=1
 
 		# Check camera 2
 		if self.cv_image_2 is not None:
@@ -184,6 +199,7 @@ class ClueGUI(QtWidgets.QMainWindow):
 			if area_2 > max_area:
 				max_area = area_2
 				best_image = self.cv_image_2
+				camera = 2
 
 		# Check camera 3
 		if self.cv_image_3 is not None:
@@ -192,6 +208,9 @@ class ClueGUI(QtWidgets.QMainWindow):
 			if area_3 > max_area:
 				max_area = area_3
 				best_image = self.cv_image_3
+				camera = 3
+
+		print(f"max area: {max_area}, camera: {camera}")
 
 		return best_image
 

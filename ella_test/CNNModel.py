@@ -14,9 +14,9 @@ class DriveCNN(nn.Module):
         self.pool = nn.AvgPool2d(kernel_size=5, stride=5)  # Output: [128, 4, 5]
 
         # Update linear layer dimensions
-        self.fc_shared = nn.Linear(128 * 3 * 5, 256)
-        self.fc_linear = nn.Linear(256, 1)  # Outputs for linear velocity
-        self.fc_angular = nn.Linear(256, 1)  # Outputs for angular velocity
+        self.fc_shared = nn.Linear(128 * 3 * 5, 400)
+        self.fc_linear = nn.Linear(400, 1)  # Outputs for linear velocity
+        self.fc_angular = nn.Linear(400, 1)  # Outputs for angular velocity
 
     def forward(self, x):
         x = x.permute(0, 3, 1, 2)  # [B, H, W, C] to [B, C, H, W] 

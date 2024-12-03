@@ -22,6 +22,7 @@ import os
 import string
 from collections import defaultdict
 import pickle
+import gzip
 
 class ImitationLearner(QtWidgets.QMainWindow):
 
@@ -59,12 +60,16 @@ class ImitationLearner(QtWidgets.QMainWindow):
 		self.rotate_down_button.clicked.connect(self.rotate_up)
 
 		self.linear_sensitivity = 1.5  # Scale for linear velocity
-		self.angular_sensitivity = 2.5  # Scale for angular velocity
+		self.angular_sensitivity = 2.8  # Scale for angular velocity
 
 		# Timer to publish commands at a constant rate
 		self.timer = QtCore.QTimer(self)
 		self.timer.timeout.connect(self.publish_command)
 		self.timer.start(100)  # Publish at 10 Hz
+
+		self.data_timer = QtCore.QTimer(self)
+		self.data_timer.timeout.connect(self.record_data)
+		self.data_timer.start(25)  
 
 		self.linear_velocity = 0.0
 		self.angular_velocity = 0.0
@@ -93,25 +98,28 @@ class ImitationLearner(QtWidgets.QMainWindow):
 	def stop_recording(self):
 		self.is_recording = False
 		self.scroll_box.append("Stopped Recording")
+		self.linear_velocity = 0
+		self.angular_velocity = 0
 
 		options = QtWidgets.QFileDialog.Options()
 		file_path, _ = QtWidgets.QFileDialog.getSaveFileName(
 			self,
-			"Save List as Pickle File",
+			"Save List as Gzip Compressed Pickle File",
 			"",
-			"Pickle Files (*.pkl);;All Files (*)",
+			"Gzip Pickle Files (*.pkl.gz);;All Files (*)",
 			options=options
 		)
 
 		if file_path:
-			# Ensure the file path ends with '.pkl'
-			if not file_path.endswith('.pkl'):
-				file_path += '.pkl'
+			# Ensure the file path ends with '.pkl.gz'
+			if not file_path.endswith('.pkl.gz'):
+				file_path += '.pkl.gz'
 
-			# Save the list as a pickle file
-			with open(file_path, 'wb') as file:
+			# Save the list as a gzip compressed pickle file
+			with gzip.open(file_path, 'wb') as file:
 				pickle.dump(self.data, file)
 			print(f"List saved to {file_path}")
+
 
 	def speed_up(self):
 		self.linear_sensitivity += 0.2
@@ -165,6 +173,11 @@ class ImitationLearner(QtWidgets.QMainWindow):
 		cmd_msg.angular.z = self.angular_velocity
 		self.cmd_pub.publish(cmd_msg)
 
+	def record_data(self):
+		if self.current_image is not None and (self.linear_velocity != 0 or self.angular_velocity !=0):
+			self.data.append((self.current_image, self.linear_velocity, self.angular_velocity))
+			self.update_image_label(self.data_label, self.current_image)
+
 	def image_callback(self, msg):
 		try:
 			cv_image = self.bridge.imgmsg_to_cv2(msg, desired_encoding="bgr8")
@@ -172,15 +185,13 @@ class ImitationLearner(QtWidgets.QMainWindow):
 			self.update_image_label(self.camera_label, cv_image)
 			
 			self.current_image = cv_image
-			if self.current_image is not None and self.linear_velocity != 0 and self.angular_velocity !=0:
-				self.data.append((self.current_image, self.linear_velocity, self.angular_velocity))
 
 			if self.use_model:
 				with torch.no_grad():
 					image_tensor = torch.from_numpy(cv_image).unsqueeze(0).float()
 					linear_pred, angular_pred = self.CNNModel(image_tensor)
-					self.linear_velocity = linear_pred
-					self.angular_velocity = angular_pred
+					self.linear_velocity = linear_pred 
+					self.angular_velocity = angular_pred 
 				self.publish_command
 
 		except CvBridgeError as e:

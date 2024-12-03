@@ -6,8 +6,8 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>477</width>
-    <height>562</height>
+    <width>665</width>
+    <height>663</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -18,22 +18,25 @@
     <property name="geometry">
      <rect>
       <x>0</x>
-      <y>460</y>
+      <y>430</y>
       <width>101</width>
       <height>25</height>
      </rect>
     </property>
     <property name="text">
-     <string>&amp;start Recording</string>
+     <string>&amp;Q Start Recording</string>
+    </property>
+    <property name="shortcut">
+     <string>Q</string>
     </property>
    </widget>
    <widget class="QLabel" name="camera_label">
     <property name="geometry">
      <rect>
-      <x>0</x>
+      <x>240</x>
       <y>10</y>
-      <width>441</width>
-      <height>251</height>
+      <width>391</width>
+      <height>311</height>
      </rect>
     </property>
     <property name="text">
@@ -43,21 +46,21 @@
    <widget class="QLabel" name="steering_area">
     <property name="geometry">
      <rect>
-      <x>220</x>
-      <y>280</y>
-      <width>241</width>
-      <height>151</height>
+      <x>280</x>
+      <y>330</y>
+      <width>311</width>
+      <height>211</height>
      </rect>
     </property>
     <property name="text">
-     <string>                              Steer Here!</string>
+     <string>                                       Steer Here!</string>
     </property>
    </widget>
    <widget class="QPushButton" name="speed_up_button">
     <property name="geometry">
      <rect>
-      <x>220</x>
-      <y>450</y>
+      <x>310</x>
+      <y>560</y>
       <width>80</width>
       <height>25</height>
      </rect>
@@ -69,8 +72,8 @@
    <widget class="QPushButton" name="rotate_up_button">
     <property name="geometry">
      <rect>
-      <x>380</x>
-      <y>450</y>
+      <x>480</x>
+      <y>560</y>
       <width>80</width>
       <height>25</height>
      </rect>
@@ -82,8 +85,8 @@
    <widget class="QPushButton" name="speed_down_button">
     <property name="geometry">
      <rect>
-      <x>220</x>
-      <y>470</y>
+      <x>310</x>
+      <y>580</y>
       <width>80</width>
       <height>25</height>
      </rect>
@@ -95,8 +98,8 @@
    <widget class="QPushButton" name="rotate_down_button">
     <property name="geometry">
      <rect>
-      <x>380</x>
-      <y>470</y>
+      <x>480</x>
+      <y>580</y>
       <width>80</width>
       <height>25</height>
      </rect>
@@ -109,9 +112,9 @@
     <property name="geometry">
      <rect>
       <x>10</x>
-      <y>280</y>
+      <y>170</y>
       <width>191</width>
-      <height>171</height>
+      <height>251</height>
      </rect>
     </property>
    </widget>
@@ -119,13 +122,16 @@
     <property name="geometry">
      <rect>
       <x>110</x>
-      <y>460</y>
+      <y>430</y>
       <width>101</width>
       <height>25</height>
      </rect>
     </property>
     <property name="text">
-     <string>Stop&amp; Recording</string>
+     <string>&amp;W Stop Recording</string>
+    </property>
+    <property name="shortcut">
+     <string>W</string>
     </property>
    </widget>
    <widget class="QCheckBox" name="use_model_checkbox">
@@ -134,14 +140,30 @@
     </property>
     <property name="geometry">
      <rect>
-      <x>70</x>
-      <y>490</y>
-      <width>81</width>
+      <x>60</x>
+      <y>460</y>
+      <width>91</width>
       <height>23</height>
      </rect>
     </property>
     <property name="text">
-     <string>&amp;Use Model</string>
+     <string>&amp;E Use Model</string>
+    </property>
+    <property name="shortcut">
+     <string>E</string>
+    </property>
+   </widget>
+   <widget class="QLabel" name="data_label">
+    <property name="geometry">
+     <rect>
+      <x>10</x>
+      <y>10</y>
+      <width>191</width>
+      <height>141</height>
+     </rect>
+    </property>
+    <property name="text">
+     <string/>
     </property>
    </widget>
   </widget>
@@ -150,7 +172,7 @@
     <rect>
      <x>0</x>
      <y>0</y>
-     <width>477</width>
+     <width>665</width>
      <height>22</height>
     </rect>
    </property>

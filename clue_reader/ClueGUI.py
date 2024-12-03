@@ -93,14 +93,14 @@ class ClueGUI(QtWidgets.QMainWindow):
 			cv_image = cv_image[200:-100] #Crop out sky and ground
 			self.update_image_label(self.camera_label, cv_image)
 
-			masked_image = self.ImageProcessor.threshold_blue(cv_image, hl=0, hh=10, sl=0, sh=10, vl=80, vh=220) #need to rename, no longer bluemask
+			masked_image = self.ImageProcessor.threshold_blue(cv_image, hl=0, hh=10, sl=0, sh=10, vl=80, vh=220) #need to rename, no longer bluemask. greymask
 			self.update_image_label(self.blue_mask_label, masked_image)
 			largest_area = self.ImageProcessor.biggest_blue(cv_image)
 		
 			top_output = ""
 			bottom_output = ""
 
-			if largest_area > 12000: 
+			if largest_area > 10000: 
 				clue_board = self.ImageProcessor.rect_and_detect(cv_image)
 				if clue_board is not None:
 					self.update_image_label(self.clue_board_label, clue_board)

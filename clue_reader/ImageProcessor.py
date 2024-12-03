@@ -192,7 +192,7 @@ class ImageProcessor():
 		#Lets try to normalize here?
 		image = self.normalize_image_scale(image, desired_height=400)
 		h,w,_ = image.shape
-		padx = 10
+		padx = 8
 		pady = 5
 		subimages = [[],[]]
 

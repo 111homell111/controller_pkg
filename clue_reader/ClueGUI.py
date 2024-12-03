@@ -245,7 +245,12 @@ class ClueGUI(QtWidgets.QMainWindow):
 			top_output = ""
 			bottom_output = ""
 
+<<<<<<< HEAD
 			if largest_area > 10000: 
+=======
+			if largest_area > 12000: 
+				print("clueboard detected!")
+>>>>>>> dcac4f0d140db5a392ef9e7fb4c84496e34a1508
 				clue_board = self.ImageProcessor.rect_and_detect(cv_image)
 				if clue_board is not None:
 					self.update_image_label(self.clue_board_label, clue_board)

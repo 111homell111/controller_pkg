@@ -125,6 +125,8 @@ class LineFollower:
         self.start_time = rospy.Time.now()
         self.no_contour_counter = 0  
         self.clueboard_center = None  # To store the center of the detected clueboard
+        self.clueboard_counter = 0
+        self.magenta_counter = 0
 
         self.pub_image = rospy.Publisher('/B1/rrbot/camera1/clueboard_image', Image, queue_size=1)  # For publishing image with highlighted clueboards
         
@@ -201,6 +203,104 @@ class LineFollower:
         # Set constant linear velocity, but slow down if the robot is very close to the line
         linear_velocity = 0.4 if bottom_of_contour < (height - 50) else 0.2
 
+        return linear_velocity, angular_velocity
+
+    
+
+    def faint_line_following(self, frame):
+        """
+        Adjust robot velocity to follow faint white lines with low contrast.
+        Transition to this state is triggered when a magenta line is detected.
+        """
+        # Convert frame to grayscale and enhance contrast
+        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+        enhanced_gray = clahe.apply(gray)
+
+        # Threshold the enhanced image to detect faint white lines
+        _, binary = cv2.threshold(enhanced_gray, 180, 255, cv2.THRESH_BINARY)
+
+        # Focus on the bottom half of the frame
+        height, width = frame.shape[:2]
+        binary_bottom = binary[height // 2 :, :]
+
+        # Find contours in the bottom half
+        contours, _ = cv2.findContours(binary_bottom, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+        min_contour_area = 2500  # Adjust this value as needed
+
+        contours = [contour for contour in contours if cv2.contourArea(contour) > min_contour_area]
+
+        if not contours:
+            rospy.logwarn("No faint contours found in the bottom half! Robot stopping.")
+            return 0.0, 0.0  # Stop the robot
+
+        # Identify the leftmost contour
+        leftmost_contour = min(contours, key=lambda cnt: cv2.boundingRect(cnt)[0])
+
+        # Compute the centroid of the selected contour
+        moments = cv2.moments(leftmost_contour)
+        if moments['m00'] == 0:  # Avoid division by zero
+            rospy.logwarn("Degenerate faint contour with zero area.")
+            return 0.0, 0.0  # Stop the robot
+        cx = int(moments['m10'] / moments['m00'])
+        cy = int(moments['m01'] / moments['m00']) + height // 2  # Adjust for bottom-half cropping
+
+        # Determine angular velocity based on contour's position
+        angular_velocity = 0.0075 * (width // 2 - cx - 250)
+
+        # Avoid crossing the contour: increase angular velocity if the contour is very close
+        bottom_of_contour = max(leftmost_contour, key=lambda point: point[0][1])[0][1] + height // 2
+        if bottom_of_contour > (height - 50) or cx < 80:  # Contour is near the bottom of the frame
+            print(f"centroid of contour: {cx}")
+            angular_velocity *= 3.5  # Turn more aggressively
+
+        # Highlight the selected contour for visualization
+        highlighted_frame = frame.copy()
+        cv2.drawContours(highlighted_frame[height // 2 :, :], [leftmost_contour], -1, (0, 255, 0), 3)
+
+        # Publish the frame with highlighted contours
+        self.publish_frame_with_highlights(highlighted_frame, contours)
+
+        linear_velocity = 0.4
+
+        # Set constant linear velocity, but slow down if the robot is very close to the line
+        linear_velocity = 0.4 if bottom_of_contour < (height - 50) else 0.2
+
+        if cx < 80:
+            linear_velocity = 0.2
+
+        return linear_velocity, angular_velocity
+
+    def detect_magenta_line(self, frame):
+        """
+        Detect a magenta line in the lower part of the frame.
+        """
+        # Convert the frame to HSV color space
+        hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
+        
+        # Define the magenta color range (Hue 140-160)
+        lower_magenta = np.array([140, 50, 50])
+        upper_magenta = np.array([160, 255, 255])
+        mask = cv2.inRange(hsv, lower_magenta, upper_magenta)
+
+        # Focus on the bottom portion of the mask
+        height, _ = mask.shape
+        mask[:height // 3 * 2, :] = 0  # Keep only the bottom third
+
+        # Find contours in the mask
+        contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+        # Check if any significant contour is detected
+        for contour in contours:
+            area = cv2.contourArea(contour)
+            if area > 1000:  # Adjust the threshold based on the expected line size
+                print("Magenta line found!")
+                return True
+
+        return False
+
+
 
 
 
@@ -229,7 +329,7 @@ class LineFollower:
         #     # self.state = "approaching_clueboard"
         #     self.clueboard_center = self.get_clueboard_center(frame)
 
-        return linear_velocity, angular_velocity
+       
 
     def approaching_clueboard(self, frame):
         """Approach the detected clueboard."""
@@ -363,11 +463,19 @@ class LineFollower:
                 self.initial_movement()
             elif self.state == "line_following":
                 linear_velocity, angular_velocity = self.line_following(self.frame)
+                if self.detect_magenta_line(self.frame):
+                    rospy.loginfo("Magenta line detected! Switching to faint line following.")
+                    self.state = "faint_line_following"
+                    self.magenta_counter += 1
+                    print(f"magental line encounters: {self.magenta_counter}")
+                    pass
             elif self.state == "end":
                 linear_velocity = 0.0
                 angular_velocity = 0.0
             elif self.state == "truck_teleport":
                 self.truck_teleport()
+            elif self.state == "faint_line_following":
+                linear_velocity, angular_velocity = self.faint_line_following(self.frame)
             # elif self.state == "approaching_clueboard":
             #     linear_velocity, angular_velocity = self.approaching_clueboard(self.frame)
 

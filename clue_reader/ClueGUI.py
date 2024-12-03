@@ -29,16 +29,51 @@ class ClueGUI(QtWidgets.QMainWindow):
 		super(ClueGUI, self).__init__()
 		loadUi("./ClueGUI.ui", self)
 
+		self.bridge = CvBridge()
+		rospy.sleep(1)
+
 		rospy.init_node("ClueGUI", anonymous=True)
-		rospy.Subscriber('/B1/rrbot/camera1/image_raw', Image, self.image_callback, queue_size=1)
+
+		self.cv_image_1 = None
+		self.cv_image_2 = None
+		self.cv_image_3 = None
+
+		self.camera1 = True
+		self.camera2 = False
+		self.camera3 = False
+
+		rospy.Subscriber('/B1/rrbot/camera1/image_raw', Image, self.image_callback_1, queue_size=1)
+		rospy.Subscriber('/B1/rrbot/camera2/image_raw', Image, self.image_callback_2, queue_size=1)
+		rospy.Subscriber('/B1/rrbot/camera3/image_raw', Image, self.image_callback_3, queue_size=1)
 		self.score_tracker_pub = rospy.Publisher('/score_tracker', String, queue_size=10)
 		rospack = rospkg.RosPack()
 		package_path = rospack.get_path('controller_pkg') 
 
-		self.bridge = CvBridge()
-		rospy.sleep(1)
+
+		
+		
+
 
 		self.ImageProcessor = ImageProcessor()
+		
+		self.cv_image = self.compare_and_choose_best_image()
+
+		# if self.cv_image is not None:
+		# 	# Manually call image_callback with the current cv_image
+		# 	msg = self.bridge.cv2_to_imgmsg(self.cv_image, encoding="bgr8")
+		# 	self.image_callback(msg)
+
+		if self.cv_image_2 is None:
+			print("WAHHHHHH")
+
+		if cv2.norm(self.cv_image_2, self.cv_image, cv2.NORM_L2):
+			rospy.Subscriber('/B1/rrbot/camera2/image_raw', Image, self.image_callback, queue_size=1)
+		elif cv2.norm(self.cv_image_3, self.cv_image, cv2.NORM_L2):
+			rospy.Subscriber('/B1/rrbot/camera2/image_raw', Image, self.image_callback, queue_size=1)
+		else:
+			rospy.Subscriber('/B1/rrbot/camera1/image_raw', Image, self.image_callback, queue_size=1)
+
+
 		self.update_image_label(self.template_label, self.ImageProcessor.get_template_image())
 
 		model_path = os.path.join(package_path, 'clue_reader')
@@ -60,6 +95,8 @@ class ClueGUI(QtWidgets.QMainWindow):
 		self.start_timer_button.clicked.connect(self.start_timer)
 		self.stop_timer_button.clicked.connect(self.stop_timer)
 		self.restart_button.clicked.connect(self.restart)
+
+	
 
 
 	# Converts the OpenCV frame to QPixmap for display
@@ -86,6 +123,79 @@ class ClueGUI(QtWidgets.QMainWindow):
 	def update_image_label(self, label, frame):
 		resized_frame = self.resize_frame(label, frame)
 		label.setPixmap(self.convert_cv_to_pixmap(resized_frame))
+
+
+	def image_callback_1(self, msg):
+		if not self.camera1:
+			return
+		try:
+			self.cv_image_1 = self.bridge.imgmsg_to_cv2(msg, desired_encoding="bgr8")
+			self.cv_image_1 = self.cv_image_1[200:-100]  # Crop out sky and ground
+			self.camera1 = False
+			self.camera2 = True
+			self.camera3 = False
+			
+		except CvBridgeError as e:
+			rospy.logwarn(f"Error converting ROS Image to OpenCV: {e}")
+
+	def image_callback_2(self, msg):
+		if not self.camera2:
+			return
+		try:
+			self.cv_image_2 = self.bridge.imgmsg_to_cv2(msg, desired_encoding="bgr8")
+			self.cv_image_2 = self.cv_image_2[200:-100]  # Crop out sky and ground
+			self.camera1 = False
+			self.camera2 = False
+			self.camera3 = True
+		except CvBridgeError as e:
+			rospy.logwarn(f"Error converting ROS Image to OpenCV: {e}")
+
+	def image_callback_3(self, msg):
+		if not self.camera3:
+			return
+		try:
+
+			self.cv_image_3 = self.bridge.imgmsg_to_cv2(msg, desired_encoding="bgr8")
+			self.cv_image_3 = self.cv_image_3[200:-100]  # Crop out sky and ground
+			self.camera1 = True
+			self.camera2 = False
+			self.camera3 = False
+		except CvBridgeError as e:
+			rospy.logwarn(f"Error converting ROS Image to OpenCV: {e}")
+
+
+	def compare_and_choose_best_image(self):
+		# Compare the clueboard sizes from each camera
+		max_area = 0
+		best_image = None
+
+		# Check camera 1
+		if self.cv_image_1 is not None:
+			# masked_image_1 = self.ImageProcessor.threshold_blue(self.cv_image_1, hl=0, hh=10, sl=0, sh=10, vl=80, vh=220)
+			area_1 = self.ImageProcessor.biggest_blue(self.cv_image_1)
+			if area_1 > max_area:
+				max_area = area_1
+				best_image = self.cv_image_1
+
+		# Check camera 2
+		if self.cv_image_2 is not None:
+			# masked_image_2 = self.ImageProcessor.threshold_blue(self.cv_image_2, hl=0, hh=10, sl=0, sh=10, vl=80, vh=220)
+			area_2 = self.ImageProcessor.biggest_blue(self.cv_image_2)
+			if area_2 > max_area:
+				max_area = area_2
+				best_image = self.cv_image_2
+
+		# Check camera 3
+		if self.cv_image_3 is not None:
+			# masked_image_3 = self.ImageProcessor.threshold_blue(self.cv_image_3, hl=0, hh=10, sl=0, sh=10, vl=80, vh=220)
+			area_3 = self.ImageProcessor.biggest_blue(self.cv_image_3)
+			if area_3 > max_area:
+				max_area = area_3
+				best_image = self.cv_image_3
+
+		return best_image
+
+
 
 	def image_callback(self, msg):
 		try:

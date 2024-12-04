@@ -34,19 +34,15 @@ class ClueGUI(QtWidgets.QMainWindow):
 
 		rospy.init_node("ClueGUI", anonymous=True)
 
+		self.debug = False
+
 		self.cv_image_1 = None
 		self.cv_image_2 = None
 		self.cv_image_3 = None
-
-		# manual flags for synchronization. Kinda? Ensures one callback has happened before moving on to next.
-		# maybe not necessary
-		self.camera1 = True
-		self.camera2 = False
-		self.camera3 = False
+		self.cv_image = None
 
 		rospy.Subscriber('/B1/rrbot/camera1/image_raw', Image, self.image_callback_1, queue_size=1)
 		rospy.Subscriber('/B1/rrbot/camera2/image_raw', Image, self.image_callback_2, queue_size=1)
-		rospy.Subscriber('/B1/rrbot/camera3/image_raw', Image, self.image_callback_3, queue_size=1)
 		self.score_tracker_pub = rospy.Publisher('/score_tracker', String, queue_size=10)
 		rospack = rospkg.RosPack()
 		package_path = rospack.get_path('controller_pkg') 
@@ -57,7 +53,6 @@ class ClueGUI(QtWidgets.QMainWindow):
 
 
 		self.ImageProcessor = ImageProcessor()
-		
 		
 
 		model_path = os.path.join(package_path, 'clue_reader')
@@ -76,34 +71,9 @@ class ClueGUI(QtWidgets.QMainWindow):
 		self.possible_contexts = ["SIZE", "VICTIM", "CRIME", "TIME", "PLACE", "MOTIVE", "WEAPON", "BANDIT"]
 		self.consecutive_empty = 10
 
-		if self.cv_image_1 is None:
-			print("WAHHHHHH I WANNA CRY")
-		self.cv_image = self.compare_and_choose_best_image()
-
-		# if self.cv_image is not None:
-		# 	# Manually call image_callback with the current cv_image
-		# 	msg = self.bridge.cv2_to_imgmsg(self.cv_image, encoding="bgr8")
-		# 	self.image_callback(msg)
-
-		
-
-		# print(f"{self.camera1}")
-		# print(f"{self.camera2}")
-		# print(f"{self.camera3}")
-
-		# comparing which one has the largest clueboard
-		if self.cv_image_3 is not None and cv2.norm(self.cv_image_3, self.cv_image, cv2.NORM_L2) == 0:
-			rospy.Subscriber('/B1/rrbot/camera3/image_raw', Image, self.image_callback, queue_size=1)
-			print(f"camera 3 is being read")
-		elif self.cv_image_2 is not None and cv2.norm(self.cv_image_2, self.cv_image, cv2.NORM_L2) == 0:
-			rospy.Subscriber('/B1/rrbot/camera2/image_raw', Image, self.image_callback, queue_size=1)
-			print(f"camera2 is being read")
-		else: #take camera1 output as default
-			rospy.Subscriber('/B1/rrbot/camera1/image_raw', Image, self.image_callback, queue_size=1)
-			print(f"camera1 is being read")
-
-
-		self.update_image_label(self.template_label, self.ImageProcessor.get_template_image())
+		self.timer = QtCore.QTimer(self)
+		self.timer.timeout.connect(self.image_callback)
+		self.timer.start(20)  # Publish at 10 Hz
 	
 		self.start_timer_button.clicked.connect(self.start_timer)
 		self.stop_timer_button.clicked.connect(self.stop_timer)
@@ -139,40 +109,20 @@ class ClueGUI(QtWidgets.QMainWindow):
 
 
 	def image_callback_1(self, msg):
-		if not self.camera1:
-			return
 		try:
 			self.cv_image_1 = self.bridge.imgmsg_to_cv2(msg, desired_encoding="bgr8")
 			self.cv_image_1 = self.cv_image_1[200:-100]  # Crop out sky and ground
-			self.camera1 = False
-			self.camera2 = True
-			self.camera3 = False
-			
+			if self.debug:
+				self.update_image_label(self.camera1_label, self.cv_image_1)
 		except CvBridgeError as e:
 			rospy.logwarn(f"Error converting ROS Image to OpenCV: {e}")
 
 	def image_callback_2(self, msg):
-		if not self.camera2:
-			return
 		try:
 			self.cv_image_2 = self.bridge.imgmsg_to_cv2(msg, desired_encoding="bgr8")
 			self.cv_image_2 = self.cv_image_2[200:-100]  # Crop out sky and ground
-			self.camera1 = False
-			self.camera2 = False
-			self.camera3 = True
-		except CvBridgeError as e:
-			rospy.logwarn(f"Error converting ROS Image to OpenCV: {e}")
-
-	def image_callback_3(self, msg):
-		if not self.camera3:
-			return
-		try:
-
-			self.cv_image_3 = self.bridge.imgmsg_to_cv2(msg, desired_encoding="bgr8")
-			self.cv_image_3 = self.cv_image_3[200:-100]  # Crop out sky and ground
-			self.camera1 = True
-			self.camera2 = False
-			self.camera3 = False
+			if self.debug:
+				self.update_image_label(self.camera2_label, self.cv_image_2)
 		except CvBridgeError as e:
 			rospy.logwarn(f"Error converting ROS Image to OpenCV: {e}")
 
@@ -201,53 +151,33 @@ class ClueGUI(QtWidgets.QMainWindow):
 				best_image = self.cv_image_2
 				camera = 2
 
-		# Check camera 3
-		if self.cv_image_3 is not None:
-			# masked_image_3 = self.ImageProcessor.threshold_blue(self.cv_image_3, hl=0, hh=10, sl=0, sh=10, vl=80, vh=220)
-			area_3 = self.ImageProcessor.biggest_blue(self.cv_image_3)
-			if area_3 > max_area:
-				max_area = area_3
-				best_image = self.cv_image_3
-				camera = 3
-
-		print(f"max area: {max_area}, camera: {camera}")
+		#print(f"max area: {max_area}, camera: {camera}")
+		if best_image is not None and self.debug:
+			self.update_image_label(self.best_image_label, best_image)
 
 		return best_image
 
 
 
-	def image_callback(self, msg):
+	def image_callback(self):
 		try:
-			# cv_image = self.bridge.imgmsg_to_cv2(msg, desired_encoding="bgr8")
-			# cv_image = cv_image[200:-100] #Crop out sky and ground
-
-			 # ensure all camera images are initialized
-			if self.cv_image_1 is None or self.cv_image_2 is None or self.cv_image_3 is None:
+			if self.cv_image_1 is None or self.cv_image_2 is None:
 				rospy.logwarn("Waiting for all camera images to initialize...")
-				# take default?
-				cv_image = self.bridge.imgmsg_to_cv2(msg, desired_encoding="bgr8")
-				cv_image = cv_image[200:-100] #Crop out sky and ground
 			else:
 				# dynamically choose image with the largest clueboard
 				self.cv_image = self.compare_and_choose_best_image()
-				cv_image = self.cv_image
 
 			if self.cv_image is None:
 				rospy.logwarn("No valid clueboard detected in any camera.")
 				return
-			
-			self.update_image_label(self.camera_label, cv_image)
 
-			masked_image = self.ImageProcessor.threshold_blue(cv_image, hl=0, hh=10, sl=0, sh=10, vl=80, vh=220) #need to rename, no longer bluemask. greymask
-			self.update_image_label(self.blue_mask_label, masked_image)
-			largest_area = self.ImageProcessor.biggest_blue(cv_image)
+			largest_area = self.ImageProcessor.biggest_blue(self.cv_image)
 		
 			top_output = ""
 			bottom_output = ""
 
-			if largest_area > 12000: 
-				print("clueboard detected!")
-				clue_board = self.ImageProcessor.rect_and_detect(cv_image)
+			if largest_area > 10000: 
+				clue_board = self.ImageProcessor.rect_and_detect(self.cv_image)
 				if clue_board is not None:
 					self.update_image_label(self.clue_board_label, clue_board)
 					subimages = self.ImageProcessor.get_subimages(clue_board)
@@ -255,14 +185,16 @@ class ClueGUI(QtWidgets.QMainWindow):
 					#Context
 					if (subimages[0] != None):
 						top_stacked_image = self.stack_images_vertically(subimages[0])
-						self.update_image_label(self.top_subimages_label, top_stacked_image)
+						if self.debug:
+							self.update_image_label(self.top_subimages_label, top_stacked_image)
 						top_output = self.predict_word(subimages[0])
 						self.top_pred_label.setText(top_output)
 
 					#Clue
 					if (subimages[1] != None):
 						bottom_stacked_image = self.stack_images_vertically(subimages[1])
-						self.update_image_label(self.bottom_subimages_label, bottom_stacked_image)
+						if self.debug:
+							self.update_image_label(self.bottom_subimages_label, bottom_stacked_image)
 						bottom_output = self.predict_word(subimages[1])
 						self.bottom_pred_label.setText(bottom_output)
 					

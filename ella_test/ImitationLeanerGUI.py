@@ -389,7 +389,7 @@ class ImitationLearner(QtWidgets.QMainWindow):
 
 		return False
 	
-	def detect_traffic(self, current_frame, previous_frame, object, threshold=50):
+	def detect_traffic(self, current_frame, previous_frame, object, size = 40, threshold=5):
 		"""
 		movement mask between the current and previous frames.
 		
@@ -436,7 +436,7 @@ class ImitationLearner(QtWidgets.QMainWindow):
 		if contours:
 			# Find the largest contour by area
 			largest_contour = max(contours, key=cv2.contourArea)
-			if cv2.contourArea(largest_contour) > 40:
+			if cv2.contourArea(largest_contour) > size:
 				traffic = True
 				print(f"area: {cv2.contourArea(largest_contour)}")
 	
@@ -477,7 +477,7 @@ class ImitationLearner(QtWidgets.QMainWindow):
 
 			if self.crosswalk and not self.past_crosswalk:
 				# mark when pedestrian starts crossing road
-				if time.time() - self.start_crosswalk_wait > 1.3 and self.detect_traffic(self.current_image, self.previous_frame, "pedestrian", 6) and not self.ped_detected:
+				if time.time() - self.start_crosswalk_wait > 1.3 and self.detect_traffic(self.current_image, self.previous_frame, "pedestrian", threshold=6) and not self.ped_detected:
 					self.start_ped_wait = time.time() 
 					self.ped_detected = True
 					self.use_model = False
@@ -504,14 +504,14 @@ class ImitationLearner(QtWidgets.QMainWindow):
 
 			if self.roundabout and not self.past_roundabout:
 				# mark when truck starts crossing
-				if time.time() - self.start_truck_wait > 1.3 and self.detect_traffic(self.current_image, self.previous_frame, "truck", 5) and not self.truck_detected:
+				if time.time() - self.start_truck_wait > 1.3 and self.detect_traffic(self.current_image, self.previous_frame, "truck", threshold= 5) and not self.truck_detected:
 					self.start_truck_wait = time.time() 
 					self.truck_detected = True
 					self.use_model = False
 					self.scroll_box.append("truck detected")
 
 				# move forward if 1s has passed since truck showed up
-				elif self.detect_traffic(self.current_image, self.previous_frame, "truck", 5) and self.truck_detected and time.time() - self.start_truck_wait > 1.5:
+				elif self.detect_traffic(self.current_image, self.previous_frame, "truck", threshold= 5) and self.truck_detected and time.time() - self.start_truck_wait > 1.5:
 					self.scroll_box.append("truck gone")
 					self.use_model = True
 					self.past_roundabout = True

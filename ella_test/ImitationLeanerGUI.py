@@ -115,7 +115,6 @@ def spawn_position(position):
         rospy.logerr("Service call failed")
 
 
-
 def spawnTo_clue(clue):
     if (clue == 1):
         spawn_position(FIRST_SPAWN)
@@ -135,8 +134,6 @@ def spawnTo_clue(clue):
         # move_robot(-2, 0, 0.75)
         move_robot(0,6,0.35)
         move_robot(4, -7, 0.13)
-
-
 
 
 
@@ -165,6 +162,8 @@ class ImitationLearner(QtWidgets.QMainWindow):
 		self.start_truck_wait = None
 		self.start_truck_wait = None
 		self.past_roundabout = False
+		self.awaiting_yoda = False
+		self.seen_yoda = False
 
 		self.last_clue_time = time.time()
 
@@ -172,7 +171,7 @@ class ImitationLearner(QtWidgets.QMainWindow):
 		rospy.sleep(1)
 		rospy.Subscriber('/B1/rrbot/camera1/image_raw', Image, self.image_callback, queue_size=1)
 
-		rospy.Subscriber("/clue_count", String, self.clue_count_callback, queue_size = 1)
+		rospy.Subscriber("/score_tracker", String, self.clue_count_callback, queue_size = 1)
 		self.debug = True
 
 		self.use_model = False
@@ -275,7 +274,6 @@ class ImitationLearner(QtWidgets.QMainWindow):
 	def mouseMoveEvent(self, event):
 		# Get the position of the mouse relative to the steering area
 		mouse_pos = event.pos()
-		print(mouse_pos)
 		widget_rect = self.steering_area.geometry()
 		center_x = widget_rect.center().x()
 		center_y = widget_rect.center().y()
@@ -305,7 +303,7 @@ class ImitationLearner(QtWidgets.QMainWindow):
 		self.linear_velocity = round(max(min(self.linear_velocity, 2.0), -2.0),1)
 		self.angular_velocity = round(max(min(self.angular_velocity, 3.0), -4.0),1)
 
-		self.scroll_box.append(f"{self.linear_velocity},{self.angular_velocity}")
+		#self.scroll_box.append(f"{self.linear_velocity},{self.angular_velocity}")
 
 	def publish_command(self):
 		# Create and publish the Twist message
@@ -317,13 +315,13 @@ class ImitationLearner(QtWidgets.QMainWindow):
 	def record_data(self):
 		if self.current_image is not None and (self.linear_velocity != 0 or self.angular_velocity !=0):
 			self.data.append((self.current_image, self.linear_velocity, self.angular_velocity))
-			self.update_image_label(self.data_label, self.current_image)
+			#self.update_image_label(self.data_label, self.current_image)
 
 	def clue_count_callback(self, msg):
 		try:
-			self.clue_count = int(msg.data)
+			self.clue_count = int(msg.data.split(',')[2])
 			rospy.loginfo(f"Received clue count: {self.clue_count}")
-			print(f"{self.clue_count}")
+			self.scroll_box.append(f"Received clue count: {self.clue_count}")
 			self.last_clue_time = time.time()
 		except ValueError:
 			rospy.logwarn(f"Invalid clue count received: {msg.data}. Unable to convert to integer.")
@@ -362,7 +360,31 @@ class ImitationLearner(QtWidgets.QMainWindow):
 
 		return False
 	
-	# for baby yoda (not used yet because traffic is a bitch)
+	
+
+	def detect_yoda(self, image, hl=150, hh = 185, sl=20, sh = 70, vl=30, vh=60):
+		"""
+		please give me a BGR image
+		"""
+		hsv_image = cv2.cvtColor(image.copy(), cv2.COLOR_BGR2HSV)[:-100]
+		lower_blue = np.array([hl, sl, vl]) #wrong variable names but whatever
+		upper_blue = np.array([hh, sh, vh])
+		mask = cv2.inRange(hsv_image, lower_blue, upper_blue)
+		
+		#self.update_image_label(self.data_label, mask)
+
+		contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+		if contours:
+			max_contour = max(contours, key=cv2.contourArea)
+			area = cv2.contourArea(max_contour)
+			#self.scroll_box.append(str(area))
+			if area > 40: 
+				return True
+		return False
+
+
+
 	def detect_magenta(self, frame):
 		"""
 		Detect a red line in the lower part of the frame.
@@ -373,20 +395,22 @@ class ImitationLearner(QtWidgets.QMainWindow):
 		# define the red color range (Hue 165-180)
 		lower_magenta = np.array([145, 100, 100])
 		upper_magenta = np.array([165, 255, 255])
+		
 		mask = cv2.inRange(hsv, lower_magenta, upper_magenta)
 
-		# only take bottom portion of the mask
 		height, _ = mask.shape
-		mask[:height // 3 * 2, :] = 0  # Keep only the bottom third
+		mask = mask[height//4:, : ]
+		# only take bottom portion of the mask
+
+		self.update_image_label(self.data_label, mask)
 
 		# Find contours in the mask
 		contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
-		# Check if any significant contour is detected
 		if contours:
-			largest_contour = max(contours, key=cv2.contourArea)
-			area = cv2.contourArea(largest_contour)
-			if area > 500:  # Adjust the threshold based on the expected line size
+			max_contour = max(contours, key=cv2.contourArea)
+			area = cv2.contourArea(max_contour)
+			if area > 380: 
 				return True
 
 		return False
@@ -416,8 +440,9 @@ class ImitationLearner(QtWidgets.QMainWindow):
 			previous_frame = previous_frame[:, (width // 3): (2*width // 3) ]
 			current_frame = current_frame[:, (width // 3): (2*width // 3) ]
 		elif object == "truck":
-			previous_frame = previous_frame[:, 0: (2*width // 4) ]
-			current_frame = current_frame[:, 0: (2*width // 4) ]
+			#previous_frame = previous_frame[:, 0: (2*width // 4) ]
+			#current_frame = current_frame[:, 0: (2*width // 4) ]
+			pass
 
 
 		# Convert frames to grayscale
@@ -430,7 +455,7 @@ class ImitationLearner(QtWidgets.QMainWindow):
 
 		# Threshold the difference to get binary movement areas
 		_, movement_mask = cv2.threshold(diff, threshold, 255, cv2.THRESH_BINARY)
-		self.update_image_label(self.mask, movement_mask)
+		self.update_image_label(self.data_label, movement_mask)
 
 		# Find contours of the movement mask
 		contours, _ = cv2.findContours(movement_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
@@ -444,7 +469,6 @@ class ImitationLearner(QtWidgets.QMainWindow):
 	
 
 		return traffic
-
 
 
 	def image_callback(self, msg):
@@ -517,12 +541,22 @@ class ImitationLearner(QtWidgets.QMainWindow):
 					self.scroll_box.append("truck gone")
 					self.use_model = True
 					self.past_roundabout = True
-						
-			
-					
+									
 			self.previous_frame = cv_image
 
-			if time.time() - self.last_clue_time > 200:
+			if self.clue_count == 6 and not self.seen_yoda: 
+				if self.detect_magenta(self.current_image) and not self.awaiting_yoda:
+					self.use_model = False
+					self.linear_velocity = 0
+					self.angular_velocity = 0
+					self.scroll_box.append("Awaiting baby yoda")
+					self.awaiting_yoda = True
+				elif self.awaiting_yoda and self.detect_yoda(self.current_image): #true if we found him
+					self.scroll_box.append("baby yoda seen")
+					self.seen_yoda = True
+					self.use_model = True
+
+			if time.time() - self.last_clue_time > 100:
 				self.use_model = False
 				self.linear_velocity = 0.0
 				self.angular_velocity = 0.0
@@ -537,7 +571,7 @@ class ImitationLearner(QtWidgets.QMainWindow):
 				with torch.no_grad():
 					image_tensor = torch.from_numpy(cv_image).unsqueeze(0).float()
 					linear_pred, angular_pred = self.CNNModel(image_tensor)
-					self.linear_velocity = linear_pred * 0.7
+					self.linear_velocity = linear_pred * 0.9
 					self.angular_velocity = angular_pred 
 				self.publish_command()
 

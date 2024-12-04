@@ -197,8 +197,8 @@ class ClueGUI(QtWidgets.QMainWindow):
 							self.update_image_label(self.bottom_subimages_label, bottom_stacked_image)
 						bottom_output = self.predict_word(subimages[1])
 						self.bottom_pred_label.setText(bottom_output)
-					
-				print(f"{top_output}, {bottom_output}")
+				if self.debug:
+					print(f"{top_output}, {bottom_output}")
 				if top_output and bottom_output:
 					self.consecutive_empty = 0
 					if top_output in self.possible_contexts and top_output not in self.sent_contexts: #If context is correct

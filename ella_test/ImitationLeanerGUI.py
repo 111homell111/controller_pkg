@@ -394,14 +394,14 @@ class ImitationLearner(QtWidgets.QMainWindow):
 		# define the red color range (Hue 165-180)
 		lower_magenta = np.array([145, 100, 100])
 		upper_magenta = np.array([165, 255, 255])
+		
 		mask = cv2.inRange(hsv, lower_magenta, upper_magenta)
 
-		self.update_image_label(self.data_label, mask)
-
-		# only take bottom portion of the mask
 		height, _ = mask.shape
-		mask[:height // 3 * 2, :] = 0  # Keep only the bottom third
+		mask = mask[height//4:, : ]
+		# only take bottom portion of the mask
 
+		self.update_image_label(self.data_label, mask)
 
 		# Find contours in the mask
 		contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
@@ -409,7 +409,7 @@ class ImitationLearner(QtWidgets.QMainWindow):
 		if contours:
 			max_contour = max(contours, key=cv2.contourArea)
 			area = cv2.contourArea(max_contour)
-			if area > 500: 
+			if area > 380: 
 				return True
 
 		return False
@@ -555,7 +555,7 @@ class ImitationLearner(QtWidgets.QMainWindow):
 					self.seen_yoda = True
 					self.use_model = True
 
-			if time.time() - self.last_clue_time > 200000:
+			if time.time() - self.last_clue_time > 100:
 				self.use_model = False
 				self.linear_velocity = 0.0
 				self.angular_velocity = 0.0
@@ -569,7 +569,7 @@ class ImitationLearner(QtWidgets.QMainWindow):
 				with torch.no_grad():
 					image_tensor = torch.from_numpy(cv_image).unsqueeze(0).float()
 					linear_pred, angular_pred = self.CNNModel(image_tensor)
-					self.linear_velocity = linear_pred * 0.85
+					self.linear_velocity = linear_pred * 0.9
 					self.angular_velocity = angular_pred 
 				self.publish_command()
 

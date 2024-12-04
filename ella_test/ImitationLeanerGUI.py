@@ -39,6 +39,8 @@ class ImitationLearner(QtWidgets.QMainWindow):
 		rospy.sleep(1)
 		rospy.Subscriber('/B1/rrbot/camera1/image_raw', Image, self.image_callback, queue_size=1)
 
+		self.debug = True
+
 		self.use_model = False
 		model_path = os.path.join(package_path, 'ella_test')
 		self.CNNModel = DriveCNN()
@@ -67,9 +69,11 @@ class ImitationLearner(QtWidgets.QMainWindow):
 		self.timer.timeout.connect(self.publish_command)
 		self.timer.start(100)  # Publish at 10 Hz
 
-		self.data_timer = QtCore.QTimer(self)
-		self.data_timer.timeout.connect(self.record_data)
-		self.data_timer.start(25)  
+
+		if self.debug:
+			self.data_timer = QtCore.QTimer(self)
+			self.data_timer.timeout.connect(self.record_data)
+			self.data_timer.start(25)  
 
 		self.linear_velocity = 0.0
 		self.angular_velocity = 0.0
@@ -93,7 +97,10 @@ class ImitationLearner(QtWidgets.QMainWindow):
 	def start_recording(self):
 		self.data = []
 		self.is_recording = True
-		self.scroll_box.append("Starting Recording")
+		if not self.debug:
+			self.scrollbox.append("WARNING, DATALOGGING IS OFF")
+		else: 
+			self.scroll_box.append("Starting Recording")
 
 	def stop_recording(self):
 		self.is_recording = False
@@ -190,7 +197,7 @@ class ImitationLearner(QtWidgets.QMainWindow):
 				with torch.no_grad():
 					image_tensor = torch.from_numpy(cv_image).unsqueeze(0).float()
 					linear_pred, angular_pred = self.CNNModel(image_tensor)
-					self.linear_velocity = linear_pred 
+					self.linear_velocity = linear_pred * 0.7
 					self.angular_velocity = angular_pred 
 				self.publish_command
 

@@ -477,7 +477,7 @@ class ImitationLearner(QtWidgets.QMainWindow):
 
 			if self.crosswalk and not self.past_crosswalk:
 				# mark when pedestrian starts crossing road
-				if time.time() - self.start_crosswalk_wait > 1.3 and self.detect_traffic(self.current_image, self.previous_frame, "pedestrian", 5) and not self.ped_detected:
+				if time.time() - self.start_crosswalk_wait > 1.3 and self.detect_traffic(self.current_image, self.previous_frame, "pedestrian", 6) and not self.ped_detected:
 					self.start_ped_wait = time.time() 
 					self.ped_detected = True
 					self.use_model = False

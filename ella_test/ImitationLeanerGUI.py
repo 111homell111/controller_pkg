@@ -20,6 +20,7 @@ from CNNModel import DriveCNN
 
 import os
 import string
+from std_msgs.msg import String
 from collections import defaultdict
 import pickle
 import gzip
@@ -32,6 +33,8 @@ class ImitationLearner(QtWidgets.QMainWindow):
 		loadUi("./ImitationLearner.ui", self)
 
 		rospy.init_node("ClueGUI", anonymous=True)
+		# rospy.init_node('clue_counter', anonymous=True)
+
 		self.cmd_pub = rospy.Publisher('/B1/cmd_vel', Twist, queue_size=10)
 		rospack = rospkg.RosPack()
 		package_path = rospack.get_path('controller_pkg') 
@@ -42,10 +45,18 @@ class ImitationLearner(QtWidgets.QMainWindow):
 		self.start_ped_wait = None # time robbie first saw pedestrian
 		self.past_crosswalk = False # are we past the crosswalk
 		self.previous_frame = None 
+		self.clue_count = 0
+		self.roundabout = False
+		self.truck_detected = False
+		self.start_truck_wait = None
+		self.start_truck_wait = None
+		self.past_roundabout = False
 
 		self.bridge = CvBridge()
 		rospy.sleep(1)
 		rospy.Subscriber('/B1/rrbot/camera1/image_raw', Image, self.image_callback, queue_size=1)
+
+		rospy.Subscriber("/clue_count", String, self.clue_count_callback, queue_size = 1)
 
 		self.use_model = False
 		model_path = os.path.join(package_path, 'ella_test')
@@ -186,6 +197,14 @@ class ImitationLearner(QtWidgets.QMainWindow):
 			self.data.append((self.current_image, self.linear_velocity, self.angular_velocity))
 			self.update_image_label(self.data_label, self.current_image)
 
+	def clue_count_callback(self, msg):
+		try:
+			self.clue_count = int(msg.data)
+			rospy.loginfo(f"Received clue count: {self.clue_count}")
+		except ValueError:
+			rospy.logwarn(f"Invalid clue count received: {msg.data}. Unable to convert to integer.")
+
+
 	def detect_crosswalk(self, frame):
 		"""
 		Detect a red line in the lower part of the frame.
@@ -286,7 +305,7 @@ class ImitationLearner(QtWidgets.QMainWindow):
 						self.start_crosswalk_wait = time.time()
 					self.use_model = False
 					self.crosswalk = True
-					self.previous_frame = cv_image	
+					# self.previous_frame = cv_image	
 
 					# stop the robot
 					self.linear_velocity = 0.0
@@ -314,6 +333,33 @@ class ImitationLearner(QtWidgets.QMainWindow):
 					self.scroll_box.append("pedestrian gone")
 					self.use_model = True
 					self.past_crosswalk = True
+			
+			if self.clue_count == 3 and not self.roundabout and not self.past_roundabout:
+				self.use_model = False
+				self.roundabout = True
+
+				if self.start_truck_wait is None:
+					self.start_truck_wait = time.time()
+
+				# stop the robot
+				self.linear_velocity = 0.0
+				self.angular_velocity = 0.0
+				self.publish_command()
+				self.scroll_box.append("Stopping for truck")
+
+			if self.roundabout and not self.past_roundabout:
+				# mark when truck starts crossing
+				if self.detect_traffic(self.current_image, self.previous_frame, "truck", threshold=110) and not self.truck_detected:
+					self.start_truck_wait = time.time() 
+					self.truck_detected = True
+					self.use_model = False
+					self.scroll_box.append("truck detected")
+
+				# move forward if 1s has passed since truck showed up
+				elif self.detect_traffic(self.current_image, self.previous_frame, "truck", threshold=110) and self.truck_detected and time.time() - self.start_truck_wait > 2:
+					self.scroll_box.append("truck gone")
+					self.use_model = True
+					self.past_roundabout = True
 						
 			
 					

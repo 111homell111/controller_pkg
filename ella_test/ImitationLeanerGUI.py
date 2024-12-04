@@ -159,7 +159,7 @@ class ImitationLearner(QtWidgets.QMainWindow):
 		self.clue_count = 0
 		self.roundabout = False
 		self.truck_detected = False
-		self.start_truck_wait = None
+		self.start_roundabout_wait = None
 		self.start_truck_wait = None
 		self.past_roundabout = False
 		self.awaiting_yoda = False
@@ -387,7 +387,7 @@ class ImitationLearner(QtWidgets.QMainWindow):
 
 	def detect_magenta(self, frame):
 		"""
-		Detect a red line in the lower part of the frame.
+		Detect a magenta line in the lower part of the frame.
 		"""
 		# Convert the frame to HSV color space
 		hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
@@ -440,9 +440,60 @@ class ImitationLearner(QtWidgets.QMainWindow):
 			previous_frame = previous_frame[:, (width // 3): (2*width // 3) ]
 			current_frame = current_frame[:, (width // 3): (2*width // 3) ]
 		elif object == "truck":
-			#previous_frame = previous_frame[:, 0: (2*width // 4) ]
-			#current_frame = current_frame[:, 0: (2*width // 4) ]
-			pass
+			previous_frame_left = previous_frame[:, 0: (2*width // 4) ]
+			current_frame_left = current_frame[:, 0: (2*width // 4) ]
+
+			# FOR WHEN TRUCK HAS JUST PASSED YOU
+			# Convert frames to grayscale
+			gray_previous_left = cv2.cvtColor(previous_frame_left, cv2.COLOR_BGR2GRAY)
+			gray_current_left = cv2.cvtColor(current_frame_left, cv2.COLOR_BGR2GRAY)
+			
+
+			# Calculate the absolute difference
+			diff = cv2.absdiff(gray_current_left, gray_previous_left)
+
+			# Threshold the difference to get binary movement areas
+			_, movement_mask = cv2.threshold(diff, threshold, 255, cv2.THRESH_BINARY)
+			self.update_image_label(self.data_label, movement_mask)
+
+			# Find contours of the movement mask
+			contours, _ = cv2.findContours(movement_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+			if contours:
+				# Find the largest contour by area
+				largest_contour = max(contours, key=cv2.contourArea)
+				if cv2.contourArea(largest_contour) > size:
+					traffic = True
+					print(f"truck area: {cv2.contourArea(largest_contour)}")
+					return traffic
+
+
+
+			# FOR WHEN TRUCK IS FAR AWAY ON FAR SIDE OF ROUNDABOUT
+			# Convert frames to grayscale
+			gray_previous = cv2.cvtColor(previous_frame, cv2.COLOR_BGR2GRAY)
+			gray_current = cv2.cvtColor(current_frame, cv2.COLOR_BGR2GRAY)
+			
+
+			# Calculate the absolute difference
+			diff = cv2.absdiff(gray_current, gray_previous)
+
+			# Threshold the difference to get binary movement areas
+			_, movement_mask = cv2.threshold(diff, threshold, 255, cv2.THRESH_BINARY)
+			self.update_image_label(self.data_label, movement_mask)
+
+			# Find contours of the movement mask
+			contours, _ = cv2.findContours(movement_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+			if contours:
+				# Find the largest contour by area
+				largest_contour = max(contours, key=cv2.contourArea)
+				if cv2.contourArea(largest_contour) < size-250 and cv2.contourArea(largest_contour) > 16:
+					traffic = True
+					print(f"looking to other side area: {cv2.contourArea(largest_contour)}")
+
+
+			return traffic
 
 
 		# Convert frames to grayscale
@@ -510,7 +561,7 @@ class ImitationLearner(QtWidgets.QMainWindow):
 					self.scroll_box.append("pedestrian detected")
 
 				# move forward if 1s has passed since pedestrian first started crossing road
-				elif self.ped_detected and time.time() - self.start_ped_wait > 2:
+				elif self.ped_detected and time.time() - self.start_ped_wait > 1:
 					self.scroll_box.append("pedestrian gone")
 					self.use_model = True
 					self.past_crosswalk = True
@@ -519,8 +570,8 @@ class ImitationLearner(QtWidgets.QMainWindow):
 				self.use_model = False
 				self.roundabout = True
 
-				if self.start_truck_wait is None:
-					self.start_truck_wait = time.time()
+				if self.start_roundabout_wait is None:
+					self.start_roundabout_wait = time.time()
 
 				# stop the robot
 				self.linear_velocity = 0.0
@@ -530,19 +581,19 @@ class ImitationLearner(QtWidgets.QMainWindow):
 
 			if self.roundabout and not self.past_roundabout:
 				# mark when truck starts crossing
-				if time.time() - self.start_truck_wait > 1.3 and self.detect_traffic(self.current_image, self.previous_frame, "truck", threshold= 5) and not self.truck_detected:
+				if time.time() - self.start_roundabout_wait > 1.8 and self.detect_traffic(self.current_image, self.previous_frame, "truck", size = 400, threshold= 6) and not self.truck_detected:
 					self.start_truck_wait = time.time() 
 					self.truck_detected = True
 					self.use_model = False
 					self.scroll_box.append("truck detected")
 
 				# move forward if 1.5s has passed since truck showed up
-				elif self.detect_traffic(self.current_image, self.previous_frame, "truck", threshold= 5) and self.truck_detected and time.time() - self.start_truck_wait > 1.5:
+				elif self.truck_detected and time.time() - self.start_truck_wait > 1.5:
 					self.scroll_box.append("truck gone")
 					self.use_model = True
 					self.past_roundabout = True
 									
-			self.previous_frame = cv_image
+			
 
 			if self.clue_count == 6 and not self.seen_yoda: 
 				if self.detect_magenta(self.current_image) and not self.awaiting_yoda:
@@ -556,12 +607,14 @@ class ImitationLearner(QtWidgets.QMainWindow):
 					self.seen_yoda = True
 					self.use_model = True
 
-			if time.time() - self.last_clue_time > 100:
+			self.previous_frame = cv_image
+
+			if time.time() - self.last_clue_time > 125:
 				self.use_model = False
 				self.linear_velocity = 0.0
 				self.angular_velocity = 0.0
 				self.publish_command()
-				self.scroll_box.append("just fookin teleport")
+				self.scroll_box.append("just teleport")
 				spawnTo_clue(3)			
 				self.last_clue_time = time.time()
 				self.use_model = True
@@ -573,6 +626,10 @@ class ImitationLearner(QtWidgets.QMainWindow):
 					linear_pred, angular_pred = self.CNNModel(image_tensor)
 					self.linear_velocity = linear_pred * 0.9
 					self.angular_velocity = angular_pred 
+
+					# if self.clue_count == 7:
+					# 	self.linear_velocity = linear_pred * 1.2
+					# 	self.angular_velocity = angular_pred *1.4
 				self.publish_command()
 
 		except CvBridgeError as e:

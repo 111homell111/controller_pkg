@@ -61,7 +61,7 @@ class ImageProcessor():
 				H, mask = cv2.findHomography(src_pts, dst_pts, cv2.RANSAC, 3.0)
 
 				if H is not None:
-					print("Found Homography")
+					#print("Found Homography")
 					h, w = self.template_image.shape
 					template_corners = np.float32([[0, 0], [w, 0], [w, h], [0, h]]).reshape(-1, 1, 2)
 					# Use the homography to project the corners of the template onto the video frame
@@ -87,7 +87,7 @@ class ImageProcessor():
 			sorted_contours = sorted(contours, key=cv2.contourArea, reverse=True)
 			largest_contour = max(contours, key=cv2.contourArea)
 			largest_area = cv2.contourArea(largest_contour)
-			print(f"Largest area: {largest_area}")
+			#print(f"Largest area: {largest_area}")
 		return largest_area
 
 	def order_corners(self, corners):
@@ -127,7 +127,7 @@ class ImageProcessor():
 		contours, _ = cv2.findContours(blue_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
 		if not contours:
-			print("No contours found!")
+			#print("No contours found!")
 			return None
 
 		# Step 3: Find the largest contour
@@ -138,7 +138,7 @@ class ImageProcessor():
 		approx = cv2.approxPolyDP(largest_contour, epsilon, True)
 
 		if len(approx) != 4:
-			print("The detected shape does not have 4 corners.")
+			#print("The detected shape does not have 4 corners.")
 			return None
 
 		# Step 5: Extract and order corners

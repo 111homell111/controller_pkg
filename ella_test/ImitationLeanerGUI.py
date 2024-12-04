@@ -320,15 +320,12 @@ class ImitationLearner(QtWidgets.QMainWindow):
 				elif self.detect_traffic(self.current_image, self.previous_frame, "pedestrian", threshold=80) and self.ped_detected and time.time() - self.start_ped_wait > 2:
 					self.scroll_box.append("pedestrian gone")
 					self.use_model = True
-					self.past_crosswalk = True
-						
+					self.past_crosswalk = True				
 			
 					
 			self.previous_frame = cv_image
 
-			
-
-
+		
 			if self.use_model:
 				with torch.no_grad():
 					image_tensor = torch.from_numpy(cv_image).unsqueeze(0).float()

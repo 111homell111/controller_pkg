@@ -439,8 +439,9 @@ class ImitationLearner(QtWidgets.QMainWindow):
 			previous_frame = previous_frame[:, (width // 3): (2*width // 3) ]
 			current_frame = current_frame[:, (width // 3): (2*width // 3) ]
 		elif object == "truck":
-			previous_frame = previous_frame[:, 0: (2*width // 4) ]
-			current_frame = current_frame[:, 0: (2*width // 4) ]
+			#previous_frame = previous_frame[:, 0: (2*width // 4) ]
+			#current_frame = current_frame[:, 0: (2*width // 4) ]
+			pass
 
 
 		# Convert frames to grayscale
@@ -453,7 +454,7 @@ class ImitationLearner(QtWidgets.QMainWindow):
 
 		# Threshold the difference to get binary movement areas
 		_, movement_mask = cv2.threshold(diff, threshold, 255, cv2.THRESH_BINARY)
-		self.update_image_label(self.mask, movement_mask)
+		self.update_image_label(self.data_label, movement_mask)
 
 		# Find contours of the movement mask
 		contours, _ = cv2.findContours(movement_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)

@@ -166,30 +166,13 @@
      <string>data image</string>
     </property>
    </widget>
-   <widget class="QLabel" name="mask">
-    <property name="geometry">
-     <rect>
-      <x>690</x>
-      <y>20</y>
-      <width>391</width>
-      <height>311</height>
-     </rect>
-    </property>
-    <property name="text">
-     <string/>
-    </property>
-   </widget>
   </widget>
   <widget class="QMenuBar" name="menubar">
    <property name="geometry">
     <rect>
      <x>0</x>
      <y>0</y>
-<<<<<<< HEAD
      <width>682</width>
-=======
-     <width>1117</width>
->>>>>>> 430315d5d52e95acccf2051f707b4a3d3e1480b2
      <height>22</height>
     </rect>
    </property>

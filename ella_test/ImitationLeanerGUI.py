@@ -218,7 +218,7 @@ class ImitationLearner(QtWidgets.QMainWindow):
 
 		return False
 	
-	def detect_pedestrian(self, current_frame, previous_frame, threshold=30):
+	def detect_traffic(self, current_frame, previous_frame, object, threshold=80):
 		"""
 		movement mask between the current and previous frames.
 		
@@ -236,7 +236,16 @@ class ImitationLearner(QtWidgets.QMainWindow):
 			print("One of the frames is None, skipping pedestrian detection.")
 			return False
 		
-		pedestrian = False
+		traffic = False
+
+		height, width = current_frame.shape[:2]
+		if object == "pedestrian":
+			previous_frame = previous_frame[(width // 4): (3*width // 4) ]
+			current_frame = current_frame[(width // 4): (3*width // 4) ]
+		elif object == "truck":
+			previous_frame = previous_frame[0: (2*width // 4) ]
+			current_frame = current_frame[0: (2*width // 4) ]
+
 
 		# Convert frames to grayscale
 		gray_previous = cv2.cvtColor(previous_frame, cv2.COLOR_BGR2GRAY)
@@ -255,10 +264,10 @@ class ImitationLearner(QtWidgets.QMainWindow):
 		if contours:
 			# Find the largest contour by area
 			largest_contour = max(contours, key=cv2.contourArea)
-			pedestrian = True
+			traffic = True
 	
 
-		return pedestrian
+		return traffic
 
 
 
@@ -294,14 +303,14 @@ class ImitationLearner(QtWidgets.QMainWindow):
 
 			if self.crosswalk and not self.past_crosswalk:
 				# mark when pedestrian starts crossing road
-				if self.detect_pedestrian(self.current_image, self.previous_frame, threshold=0) and not self.ped_detected:
+				if self.detect_traffic(self.current_image, self.previous_frame, "pedestrian", threshold=0) and not self.ped_detected:
 					self.start_ped_wait = time.time() 
 					self.ped_detected = True
 					self.use_model = False
 					self.scroll_box.append("pedestrian detected")
 
 				# move forward if 1s has passed since pedestrian first started crossing road
-				elif self.detect_pedestrian(self.current_image, self.previous_frame, threshold=80) and self.ped_detected and time.time() - self.start_ped_wait > 2:
+				elif self.detect_traffic(self.current_image, self.previous_frame, "pedestrian", threshold=80) and self.ped_detected and time.time() - self.start_ped_wait > 2:
 					self.scroll_box.append("pedestrian gone")
 					self.use_model = True
 					self.past_crosswalk = True

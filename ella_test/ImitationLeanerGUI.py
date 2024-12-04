@@ -118,22 +118,22 @@ def spawn_position(position):
 def spawnTo_clue(clue):
     if (clue == 1):
         spawn_position(FIRST_SPAWN)
-        move_robot(-4,0,0.65)
-        move_robot(0,-6,0.18)
-        move_robot(2,0,0.3)
-        move_robot(0,0,0.2)
-        move_robot(0,6,0.21)
+        # move_robot(-4,0,0.65)
+        # move_robot(0,-6,0.18)
+        # move_robot(2,0,0.3)
+        # move_robot(0,0,0.2)
+        # move_robot(0,6,0.21)
     elif clue == 2:
         spawn_position(SECOND_SPAWN)
-        move_robot(0,7,0.183)
-        move_robot(-3,0, 1.2)
-        move_robot(0,-6,0.38)
-        move_robot(0,0,0.2)
+        # move_robot(0,7,0.183)
+        # move_robot(-3,0, 1.2)
+        # move_robot(0,-6,0.38)
+        # move_robot(0,0,0.2)
     elif clue == 3:
         spawn_position(THIRD_SPAWN)
         # move_robot(-2, 0, 0.75)
-        move_robot(0,6,0.35)
-        move_robot(4, -7, 0.13)
+        # move_robot(0,6,0.35)
+        # move_robot(4, -7, 0.13)
 
 
 
@@ -141,9 +141,11 @@ class ImitationLearner(QtWidgets.QMainWindow):
 
 	def __init__(self):
 		super(ImitationLearner, self).__init__()
-		loadUi("./ImitationLearner.ui", self)
+		script_dir = os.path.dirname(os.path.abspath(__file__))  # Directory of the script
+		ui_file_path = os.path.join(script_dir, "ImitationLearner.ui")
+		loadUi(ui_file_path, self)
 
-		rospy.init_node("ClueGUI", anonymous=True)
+		rospy.init_node("ImitationLearner", anonymous=True)
 		# rospy.init_node('clue_counter', anonymous=True)
 
 		self.cmd_pub = rospy.Publisher('/B1/cmd_vel', Twist, queue_size=10)
@@ -323,6 +325,7 @@ class ImitationLearner(QtWidgets.QMainWindow):
 			rospy.loginfo(f"Received clue count: {self.clue_count}")
 			self.scroll_box.append(f"Received clue count: {self.clue_count}")
 			self.last_clue_time = time.time()
+
 		except ValueError:
 			rospy.logwarn(f"Invalid clue count received: {msg.data}. Unable to convert to integer.")
 
@@ -609,7 +612,7 @@ class ImitationLearner(QtWidgets.QMainWindow):
 
 			self.previous_frame = cv_image
 
-			if time.time() - self.last_clue_time > 125:
+			if time.time() - self.last_clue_time > 85:
 				self.use_model = False
 				self.linear_velocity = 0.0
 				self.angular_velocity = 0.0
@@ -624,7 +627,7 @@ class ImitationLearner(QtWidgets.QMainWindow):
 				with torch.no_grad():
 					image_tensor = torch.from_numpy(cv_image).unsqueeze(0).float()
 					linear_pred, angular_pred = self.CNNModel(image_tensor)
-					self.linear_velocity = linear_pred * 0.9
+					self.linear_velocity = linear_pred * 0.80
 					self.angular_velocity = angular_pred 
 
 					# if self.clue_count == 7:

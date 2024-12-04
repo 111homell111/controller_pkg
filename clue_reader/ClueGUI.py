@@ -27,8 +27,9 @@ class ClueGUI(QtWidgets.QMainWindow):
 
 	def __init__(self):
 		super(ClueGUI, self).__init__()
-		loadUi("./ClueGUI.ui", self)
-
+		script_dir = os.path.dirname(os.path.abspath(__file__))  # Directory of the script
+		ui_file_path = os.path.join(script_dir, "./ClueGUI.ui")
+		loadUi(ui_file_path, self)
 		self.bridge = CvBridge()
 		rospy.sleep(1)
 
@@ -47,9 +48,8 @@ class ClueGUI(QtWidgets.QMainWindow):
 		rospack = rospkg.RosPack()
 		package_path = rospack.get_path('controller_pkg') 
 
-		self.clue_count = 0
-		self.clue_count_pub = rospy.Publisher('/clue_count', String, queue_size=10)
-		
+		#self.clue_count = 0
+		#self.clue_count_pub = rospy.Publisher('/clue_count', String, queue_size=10)
 
 
 		self.ImageProcessor = ImageProcessor()
@@ -80,8 +80,6 @@ class ClueGUI(QtWidgets.QMainWindow):
 		self.restart_button.clicked.connect(self.restart)
 
 	
-
-
 	# Converts the OpenCV frame to QPixmap for display
 	def convert_cv_to_pixmap(self, cv_img):
 		cv_img = cv2.cvtColor(cv_img, cv2.COLOR_BGR2RGB)  # Convert BGR to RGB
@@ -213,8 +211,8 @@ class ClueGUI(QtWidgets.QMainWindow):
 				if self.consecutive_empty == 5: #once we've seen enough empty frames, send best guess
 					if self.current_guess_counter:
 						self.send_guess()
-						self.clue_count += 1
-						self.clue_count_pub.publish(str(self.clue_count))
+						#self.clue_count += 1
+						#self.clue_count_pub.publish(str(self.clue_count))
 
 			#print(self.consecutive_empty)
 			self.update_guess_list()
@@ -230,6 +228,14 @@ class ClueGUI(QtWidgets.QMainWindow):
 		rospy.loginfo(f"Publishing to /score_tracker: {message}")
 		self.score_tracker_pub.publish(message)
 		rospy.sleep(1)
+
+		if context_index + 1 == 8:
+			message = f'{self.team_name},{self.password},{-1},NA'
+			rospy.loginfo(f"Publishing Done to /score_tracker: {message}")
+			self.score_tracker_pub.publish(message)
+		
+		
+
 		self.current_guess_counter = defaultdict(lambda: 0)
 
 

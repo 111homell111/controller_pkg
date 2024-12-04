@@ -47,6 +47,11 @@ class ClueGUI(QtWidgets.QMainWindow):
 		rospack = rospkg.RosPack()
 		package_path = rospack.get_path('controller_pkg') 
 
+		self.clue_count = 0
+		self.clue_count_pub = rospy.Publisher('/clue_count', String, queue_size=10)
+		
+
+
 		self.ImageProcessor = ImageProcessor()
 		
 
@@ -208,6 +213,8 @@ class ClueGUI(QtWidgets.QMainWindow):
 				if self.consecutive_empty == 5: #once we've seen enough empty frames, send best guess
 					if self.current_guess_counter:
 						self.send_guess()
+						self.clue_count += 1
+						self.clue_count_pub.publish(str(self.clue_count))
 
 			#print(self.consecutive_empty)
 			self.update_guess_list()

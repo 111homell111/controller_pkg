@@ -23,6 +23,7 @@ import string
 from collections import defaultdict
 import pickle
 import gzip
+import time
 
 class ImitationLearner(QtWidgets.QMainWindow):
 
@@ -34,6 +35,13 @@ class ImitationLearner(QtWidgets.QMainWindow):
 		self.cmd_pub = rospy.Publisher('/B1/cmd_vel', Twist, queue_size=10)
 		rospack = rospkg.RosPack()
 		package_path = rospack.get_path('controller_pkg') 
+
+		self.crosswalk = False # True if crosswalk is encountered
+		self.start_crosswalk_wait = None # time robbie started waiting at crosswalk
+		self.ped_detected = False #True if robbie detects pedestrian
+		self.start_ped_wait = None # time robbie first saw pedestrian
+		self.past_crosswalk = False # are we past the crosswalk
+		self.previous_frame = None 
 
 		self.bridge = CvBridge()
 		rospy.sleep(1)
@@ -82,7 +90,7 @@ class ImitationLearner(QtWidgets.QMainWindow):
 		self.start_recording_button.clicked.connect(self.start_recording)
 		self.stop_recording_button.clicked.connect(self.stop_recording)
 
-		self.current_image = ""
+		self.current_image = None
 		#data should contain a tuple containing an image and a tuple containing linevelo and angular velo
 		self.data = []
 
@@ -185,13 +193,141 @@ class ImitationLearner(QtWidgets.QMainWindow):
 			self.data.append((self.current_image, self.linear_velocity, self.angular_velocity))
 			self.update_image_label(self.data_label, self.current_image)
 
+	def detect_crosswalk(self, frame):
+		"""
+		Detect a red line in the lower part of the frame.
+		"""
+		# Convert the frame to HSV color space
+		hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
+		
+		# define the red color range (Hue 165-180)
+		lower_red1 = np.array([0, 50, 50])
+		upper_red2 = np.array([6, 255, 255])
+		mask1 = cv2.inRange(hsv, lower_red1, upper_red2)
+
+		lower_red2 = np.array([165, 50, 50])
+		upper_red2 = np.array([180, 255, 255])
+		mask2 = cv2.inRange(hsv, lower_red2, upper_red2)
+		mask = cv2.bitwise_or(mask1, mask2)
+
+		# only take bottom portion of the mask
+		height, _ = mask.shape
+		mask[:height // 3 * 2, :] = 0  # Keep only the bottom third
+
+		# Find contours in the mask
+		contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+		# Check if any significant contour is detected
+		for contour in contours:
+			area = cv2.contourArea(contour)
+			if area > 500:  # Adjust the threshold based on the expected line size
+				return True
+
+		return False
+	
+	def detect_traffic(self, current_frame, previous_frame, object, threshold=80):
+		"""
+		movement mask between the current and previous frames.
+		
+		Args:
+			current_frame (numpy.ndarray): current frame in BGR format.
+			previous_frame (numpy.ndarray): previous frame in BGR format.
+			threshold (int): The minimum difference value to consider movement.
+			
+		Returns:
+			movement_mask (numpy.ndarray): A binary mask highlighting areas of movement.
+			largest_contour (list): The largest contour of the moving region, if any.
+		"""
+		
+		if current_frame is None or previous_frame is None:
+			print("One of the frames is None, skipping pedestrian detection.")
+			return False
+		
+		traffic = False
+
+		height, width = current_frame.shape[:2]
+		if object == "pedestrian":
+			previous_frame = previous_frame[(width // 4): (3*width // 4) ]
+			current_frame = current_frame[(width // 4): (3*width // 4) ]
+		elif object == "truck":
+			previous_frame = previous_frame[0: (2*width // 4) ]
+			current_frame = current_frame[0: (2*width // 4) ]
+
+
+		# Convert frames to grayscale
+		gray_previous = cv2.cvtColor(previous_frame, cv2.COLOR_BGR2GRAY)
+		gray_current = cv2.cvtColor(current_frame, cv2.COLOR_BGR2GRAY)
+		
+
+		# Calculate the absolute difference
+		diff = cv2.absdiff(gray_current, gray_previous)
+
+		# Threshold the difference to get binary movement areas
+		_, movement_mask = cv2.threshold(diff, threshold, 255, cv2.THRESH_BINARY)
+
+		# Find contours of the movement mask
+		contours, _ = cv2.findContours(movement_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+		if contours:
+			# Find the largest contour by area
+			largest_contour = max(contours, key=cv2.contourArea)
+			traffic = True
+	
+
+		return traffic
+
+
+
 	def image_callback(self, msg):
 		try:
 			cv_image = self.bridge.imgmsg_to_cv2(msg, desired_encoding="bgr8")
 			cv_image = cv2.resize(cv_image, (200, 200))[50:] #image needs to be 200w x 150h
 			self.update_image_label(self.camera_label, cv_image)
+			# print(f"{type(cv_image)}")
 			
 			self.current_image = cv_image
+
+			if self.detect_crosswalk(cv_image) and not self.past_crosswalk:
+				if not self.crosswalk:
+					if self.start_crosswalk_wait is None:
+						self.start_crosswalk_wait = time.time()
+					self.use_model = False
+					self.crosswalk = True
+					self.previous_frame = cv_image	
+
+					# stop the robot
+					self.linear_velocity = 0.0
+					self.angular_velocity = 0.0
+					self.publish_command()
+					self.scroll_box.append("Stopping for pedestrian")
+				
+				# move forward if pedestrian doesn't show up for 10s
+				elif time.time() - self.start_crosswalk_wait > 10 and self.crosswalk and not self.ped_detected:
+					self.use_model = True
+					self.scroll_box.append("No pedestrian, moving on.")
+					self.past_crosswalk = True
+
+
+			if self.crosswalk and not self.past_crosswalk:
+				# mark when pedestrian starts crossing road
+				if self.detect_traffic(self.current_image, self.previous_frame, "pedestrian", threshold=0) and not self.ped_detected:
+					self.start_ped_wait = time.time() 
+					self.ped_detected = True
+					self.use_model = False
+					self.scroll_box.append("pedestrian detected")
+
+				# move forward if 1s has passed since pedestrian first started crossing road
+				elif self.detect_traffic(self.current_image, self.previous_frame, "pedestrian", threshold=80) and self.ped_detected and time.time() - self.start_ped_wait > 2:
+					self.scroll_box.append("pedestrian gone")
+					self.use_model = True
+					self.past_crosswalk = True
+						
+			
+					
+			self.previous_frame = cv_image
+
+			
+
 
 			if self.use_model:
 				with torch.no_grad():
@@ -199,7 +335,7 @@ class ImitationLearner(QtWidgets.QMainWindow):
 					linear_pred, angular_pred = self.CNNModel(image_tensor)
 					self.linear_velocity = linear_pred * 0.7
 					self.angular_velocity = angular_pred 
-				self.publish_command
+				self.publish_command()
 
 		except CvBridgeError as e:
 			rospy.logwarn(f"Error converting ROS Image to OpenCV: {e}")

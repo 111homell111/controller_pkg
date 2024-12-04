@@ -354,8 +354,9 @@ class ImitationLearner(QtWidgets.QMainWindow):
 		contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
 		# Check if any significant contour is detected
-		for contour in contours:
-			area = cv2.contourArea(contour)
+		if contours:
+			largest_contour = max(contours, key=cv2.contourArea)
+			area = cv2.contourArea(largest_contour)
 			if area > 500:  # Adjust the threshold based on the expected line size
 				return True
 
@@ -382,8 +383,9 @@ class ImitationLearner(QtWidgets.QMainWindow):
 		contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
 		# Check if any significant contour is detected
-		for contour in contours:
-			area = cv2.contourArea(contour)
+		if contours:
+			largest_contour = max(contours, key=cv2.contourArea)
+			area = cv2.contourArea(largest_contour)
 			if area > 500:  # Adjust the threshold based on the expected line size
 				return True
 
@@ -510,7 +512,7 @@ class ImitationLearner(QtWidgets.QMainWindow):
 					self.use_model = False
 					self.scroll_box.append("truck detected")
 
-				# move forward if 1s has passed since truck showed up
+				# move forward if 1.5s has passed since truck showed up
 				elif self.detect_traffic(self.current_image, self.previous_frame, "truck", threshold= 5) and self.truck_detected and time.time() - self.start_truck_wait > 1.5:
 					self.scroll_box.append("truck gone")
 					self.use_model = True
@@ -520,7 +522,7 @@ class ImitationLearner(QtWidgets.QMainWindow):
 					
 			self.previous_frame = cv_image
 
-			if time.time() - self.last_clue_time > 180:
+			if time.time() - self.last_clue_time > 200:
 				self.use_model = False
 				self.linear_velocity = 0.0
 				self.angular_velocity = 0.0
@@ -528,6 +530,7 @@ class ImitationLearner(QtWidgets.QMainWindow):
 				self.scroll_box.append("just fookin teleport")
 				spawnTo_clue(3)			
 				self.last_clue_time = time.time()
+				self.use_model = True
 
 
 			if self.use_model:

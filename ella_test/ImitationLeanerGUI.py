@@ -62,7 +62,7 @@ def move_robot(linear_x, angular_z, duration):
     :param duration: Duration of the movement in seconds.
     """
     # Initialize ROS node
-    rospy.init_node('move_robot', anonymous=True)
+    # rospy.init_node('move_robot', anonymous=True)
 
     # Create a publisher for the /B1/cmd_vel topic
     velocity_publisher = rospy.Publisher('/B1/cmd_vel', Twist, queue_size=10)
@@ -165,6 +165,8 @@ class ImitationLearner(QtWidgets.QMainWindow):
 		self.start_truck_wait = None
 		self.start_truck_wait = None
 		self.past_roundabout = False
+
+		self.last_clue_time = time.time()
 
 		self.bridge = CvBridge()
 		rospy.sleep(1)
@@ -321,6 +323,7 @@ class ImitationLearner(QtWidgets.QMainWindow):
 		try:
 			self.clue_count = int(msg.data)
 			rospy.loginfo(f"Received clue count: {self.clue_count}")
+			self.last_clue_time = time.time()
 		except ValueError:
 			rospy.logwarn(f"Invalid clue count received: {msg.data}. Unable to convert to integer.")
 
@@ -341,6 +344,34 @@ class ImitationLearner(QtWidgets.QMainWindow):
 		upper_red2 = np.array([180, 255, 255])
 		mask2 = cv2.inRange(hsv, lower_red2, upper_red2)
 		mask = cv2.bitwise_or(mask1, mask2)
+
+		# only take bottom portion of the mask
+		height, _ = mask.shape
+		mask[:height // 3 * 2, :] = 0  # Keep only the bottom third
+
+		# Find contours in the mask
+		contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+		# Check if any significant contour is detected
+		for contour in contours:
+			area = cv2.contourArea(contour)
+			if area > 500:  # Adjust the threshold based on the expected line size
+				return True
+
+		return False
+	
+
+	def detect_magenta(self, frame):
+		"""
+		Detect a red line in the lower part of the frame.
+		"""
+		# Convert the frame to HSV color space
+		hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
+		
+		# define the red color range (Hue 165-180)
+		lower_magenta = np.array([145, 100, 100])
+		upper_magenta = np.array([165, 255, 255])
+		mask = cv2.inRange(hsv, lower_magenta, upper_magenta)
 
 		# only take bottom portion of the mask
 		height, _ = mask.shape
@@ -379,8 +410,8 @@ class ImitationLearner(QtWidgets.QMainWindow):
 
 		height, width = current_frame.shape[:2]
 		if object == "pedestrian":
-			previous_frame = previous_frame[(width // 4): (3*width // 4) ]
-			current_frame = current_frame[(width // 4): (3*width // 4) ]
+			previous_frame = previous_frame[(width // 3): (2*width // 3) ]
+			current_frame = current_frame[(width // 3): (2*width // 3) ]
 		elif object == "truck":
 			previous_frame = previous_frame[0: (2*width // 4) ]
 			current_frame = current_frame[0: (2*width // 4) ]
@@ -442,14 +473,14 @@ class ImitationLearner(QtWidgets.QMainWindow):
 
 			if self.crosswalk and not self.past_crosswalk:
 				# mark when pedestrian starts crossing road
-				if self.detect_traffic(self.current_image, self.previous_frame, "pedestrian", threshold=80) and not self.ped_detected:
+				if self.detect_traffic(self.current_image, self.previous_frame, "pedestrian", 80) and not self.ped_detected:
 					self.start_ped_wait = time.time() 
 					self.ped_detected = True
 					self.use_model = False
 					self.scroll_box.append("pedestrian detected")
 
 				# move forward if 1s has passed since pedestrian first started crossing road
-				elif self.detect_traffic(self.current_image, self.previous_frame, "pedestrian", threshold=80) and self.ped_detected and time.time() - self.start_ped_wait > 2:
+				elif self.detect_traffic(self.current_image, self.previous_frame, "pedestrian", 80) and self.ped_detected and time.time() - self.start_ped_wait > 2:
 					self.scroll_box.append("pedestrian gone")
 					self.use_model = True
 					self.past_crosswalk = True
@@ -469,14 +500,14 @@ class ImitationLearner(QtWidgets.QMainWindow):
 
 			if self.roundabout and not self.past_roundabout:
 				# mark when truck starts crossing
-				if self.detect_traffic(self.current_image, self.previous_frame, "truck", threshold=110) and not self.truck_detected:
+				if self.detect_traffic(self.current_image, self.previous_frame, "truck", 130) and not self.truck_detected:
 					self.start_truck_wait = time.time() 
 					self.truck_detected = True
 					self.use_model = False
 					self.scroll_box.append("truck detected")
 
 				# move forward if 1s has passed since truck showed up
-				elif self.detect_traffic(self.current_image, self.previous_frame, "truck", threshold=110) and self.truck_detected and time.time() - self.start_truck_wait > 2:
+				elif self.detect_traffic(self.current_image, self.previous_frame, "truck", 130) and self.truck_detected and time.time() - self.start_truck_wait > 1.5:
 					self.scroll_box.append("truck gone")
 					self.use_model = True
 					self.past_roundabout = True
@@ -485,7 +516,14 @@ class ImitationLearner(QtWidgets.QMainWindow):
 					
 			self.previous_frame = cv_image
 
-			
+			if time.time() - self.last_clue_time > 60:
+				self.use_model = False
+				self.linear_velocity = 0.0
+				self.angular_velocity = 0.0
+				self.publish_command()
+				self.scroll_box.append("just fookin teleport")
+				spawnTo_clue(3)			
+				self.last_clue_time = time.time()
 
 
 			if self.use_model:

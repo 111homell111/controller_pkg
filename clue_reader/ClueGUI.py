@@ -202,7 +202,7 @@ class ClueGUI(QtWidgets.QMainWindow):
 					if top_output in self.possible_contexts and top_output not in self.sent_contexts: #If context is correct
 						guess = f"{top_output},{bottom_output}"
 						self.current_guess_counter[guess] += 1
-				if  self.current_guess_counter and max(self.current_guess_counter.items(), key=lambda x: x[1])[1] > 15: #if 20 consecutive guesses
+				if  self.current_guess_counter and max(self.current_guess_counter.items(), key=lambda x: x[1])[1] > 20: #if 20 consecutive guesses
 					self.send_guess()
 
 	

@@ -177,7 +177,7 @@ class ImitationLearner(QtWidgets.QMainWindow):
 		self.debug = True
 
 		self.use_model = False
-		model_path = os.path.join(package_path, 'ella_test')
+		model_path = os.path.join(package_path, 'driving_controller') #not the best way to do this...
 		self.CNNModel = DriveCNN()
 		model_file = os.path.join(model_path, 'drive_cnn.pth')
 		if not os.path.exists(model_file):
